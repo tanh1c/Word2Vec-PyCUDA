@@ -128,7 +128,7 @@ from visualization import plot_tsne
 train_skipgram(
     data_path="./data/text8_processed",
     output_path="./output/vectors_skipgram",
-    epochs=5,
+    epochs=10,
     embed_dim=100,
     min_occurs=5,
     hs=1,  # Enable Hierarchical Softmax
@@ -152,7 +152,7 @@ Default parameters (based on Mikolov's paper):
 | `window` | 5 | Context window size |
 | `negative_samples` | 5 | Number of negative samples |
 | `min_count` | 5 | Minimum word frequency |
-| `epochs` | 5 | Training epochs |
+| `epochs` | 10 | Training epochs |
 | `lr_max` | 0.025 | Initial learning rate |
 | `lr_min` | 0.0001 | Final learning rate |
 | `subsampling_threshold` | 1e-5 | Subsampling threshold |
@@ -192,18 +192,38 @@ The pipeline generates the following outputs in `./output/`:
 
 ## Performance
 
-Expected performance on Google Colab T4 GPU:
+Actual performance on Google Colab T4 GPU (Text8 dataset: 16.6M words, 60,603 vocabulary):
 
-- **Dataset**: ~100M words from text8
-- **Training Time**: 
-  - NS only: ~10-15 minutes per model
-  - HS only: ~15-20 minutes per model
-  - HS + NS: ~20-25 minutes per model
-- **Memory Usage**: ~8-10 GB GPU memory
-- **Accuracy**: 
-  - NS only: ~40-50% on word analogy test
-  - HS only: ~35-45% on word analogy test
-  - HS + NS: ~45-55% on word analogy test
+### Training Time (10 epochs)
+
+| Method | Skip-gram | CBOW |
+|--------|-----------|------|
+| **NS only** | 103.5s (~1.7 min) | 22.8s (~0.4 min) |
+| **HS only** | 240.2s (~4.0 min) | 57.1s (~1.0 min) |
+| **HS + NS** | 338.5s (~5.6 min) | 65.8s (~1.1 min) |
+
+### Accuracy (Word Analogy Test)
+
+| Method | Skip-gram | CBOW |
+|--------|-----------|------|
+| **NS only** | 28.37% | 24.89% |
+| **HS only** | 27.80% | 19.34% |
+| **HS + NS** | 29.72% | 24.14% |
+
+### Memory Usage
+
+- **GPU Memory**: ~126 MB (weights + inputs + auxiliary data)
+- **Model Size**: 60,603 vocabulary × 100 dimensions = 6.06M parameters
+- **Efficient**: Optimized for T4 GPU (15GB) with room for larger datasets
+
+### Comparison with Gensim
+
+| Model | Custom Implementation | Gensim | Speedup |
+|-------|----------------------|--------|---------|
+| **Skip-gram** | 103.96s, 28.15% | 355.00s, 27.57% | **3.41x faster** |
+| **CBOW** | 23.37s, 25.32% | 114.87s, 28.75% | **4.91x faster** |
+
+**Note**: Custom implementation is significantly faster (3-5x) with comparable accuracy. Gensim CBOW has slightly higher accuracy (+3.43%) but takes 4.91x longer to train.
 
 ## Technical Details
 
