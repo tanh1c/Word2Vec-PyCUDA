@@ -1,0 +1,58 @@
+[tool.poetry]
+name = "word2vec-pycuda"
+version = "0.1.0"
+description = "Word2Vec implementation with CBOW and Skip-gram using Numba CUDA for GPU acceleration"
+authors = ["tanh1c"]
+readme = "README.md"
+license = "LGPL-3.0"
+repository = "https://github.com/tanh1c/Word2Vec-PyCUDA"
+keywords = ["word2vec", "cbow", "skip-gram", "cuda", "gpu", "numba", "word-embeddings", "nlp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+numba-cuda = "0.4.0"
+numpy = "^1.20.0"
+gensim = "^4.0.0"
+scikit-learn = "^1.0.0"
+matplotlib = "^3.5.0"
+seaborn = "^0.11.0"
+tqdm = "^4.60.0"
+requests = "^2.25.0"
+pynvml = "^11.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^6.0.0"
+black = "^23.0.0"
+flake8 = "^6.0.0"
+mypy = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+word2vec-train = "run_all:main"
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
