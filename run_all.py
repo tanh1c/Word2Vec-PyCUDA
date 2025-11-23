@@ -162,7 +162,7 @@ def interactive_menu():
             "Medium (5M sentences, ~5GB) - Larger dataset",
             "Custom size (enter number of sentences)"
         ]
-        size_choice = get_user_choice("📦 STEP 3: Select Dataset Size (WMT14 only)", size_options, default=1)
+        size_choice = get_user_choice("📦 STEP 3: Select Dataset Size (WMT14 only)", size_options, default=0)
         
         if size_choice == 0:
             max_sentences = None
