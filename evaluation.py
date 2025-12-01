@@ -139,15 +139,35 @@ def save_evaluation_results(results: Dict[str, Any], output_path: str):
     print(f"Evaluation results saved to: {output_path}")
 
 
-def compare_models(skipgram_path: str, cbow_path: str, output_path: str = "./output/model_comparison.json"):
+def compare_models(skipgram_path: str, cbow_path: str, output_path: str = "./output/model_comparison.json",
+                   sg_acc: float = None, sg_details: List[Dict] = None,
+                   cbow_acc: float = None, cbow_details: List[Dict] = None):
     """
     Compare Skip-gram and CBOW models.
+    
+    Args:
+        skipgram_path: Path to Skip-gram vectors
+        cbow_path: Path to CBOW vectors
+        output_path: Output path for comparison JSON
+        sg_acc: Pre-computed Skip-gram accuracy (optional, will compute if None)
+        sg_details: Pre-computed Skip-gram evaluation details (optional)
+        cbow_acc: Pre-computed CBOW accuracy (optional, will compute if None)
+        cbow_details: Pre-computed CBOW evaluation details (optional)
     """
     print("Comparing Skip-gram vs CBOW models...")
     
-    # Evaluate both models
-    sg_acc, sg_details = word_analogy_test(skipgram_path)
-    cbow_acc, cbow_details = word_analogy_test(cbow_path)
+    # Evaluate both models only if not provided
+    if sg_acc is None or sg_details is None:
+        print("Evaluating Skip-gram model...")
+        sg_acc, sg_details = word_analogy_test(skipgram_path)
+    else:
+        print("Using pre-computed Skip-gram accuracy...")
+    
+    if cbow_acc is None or cbow_details is None:
+        print("Evaluating CBOW model...")
+        cbow_acc, cbow_details = word_analogy_test(cbow_path)
+    else:
+        print("Using pre-computed CBOW accuracy...")
     
     # Load statistics
     sg_stats_path = skipgram_path + "_stats.json"

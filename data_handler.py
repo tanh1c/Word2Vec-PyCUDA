@@ -16,6 +16,35 @@ from gensim.scripts import segment_wiki
 from gensim import utils
 
 
+def clean_text_remove_punctuation(text: str) -> str:
+    """
+    Clean text by removing punctuation and normalizing whitespace.
+    Similar to word2vec preprocessing - only keeps letters and spaces.
+    
+    Args:
+        text: Input text line
+    
+    Returns:
+        Cleaned text with only lowercase letters and spaces
+    """
+    if not text:
+        return ""
+    
+    # Replace tabs and newlines with spaces
+    text = re.sub(r'[\t\n]', ' ', text)
+    
+    # Normalize multiple spaces to single space
+    text = re.sub(r'[ ]{2,}', ' ', text)
+    
+    # Remove all punctuation, keep only letters and spaces
+    text = re.sub(r'[^a-zA-Z ]', '', text)
+    
+    # Convert to lowercase and strip
+    text = text.lower().strip()
+    
+    return text
+
+
 def detect_phrases(text: str, word_counts: Dict[str, int], bigram_counts: Dict[Tuple[str, str], int], 
                    train_words: int, min_count: int = 5, threshold: float = 100.0) -> str:
     """
@@ -506,6 +535,10 @@ def preprocess_wmt14_news(news_file_path: str, output_dir: str, words_per_senten
     """
     Preprocess WMT14 news file into sentence files compatible with myw2v format.
     
+    This function now removes punctuation (commas, periods, etc.) and normalizes text.
+    NOTE: If you have previously processed data that still contains punctuation,
+    you need to delete the old processed files and reprocess to apply the cleaning.
+    
     Args:
         news_file_path: Path to WMT14 news file
         output_dir: Output directory for processed files
@@ -522,6 +555,7 @@ def preprocess_wmt14_news(news_file_path: str, output_dir: str, words_per_senten
     print(f"Preprocessing WMT14 news file: {news_file_path}")
     print(f"Output directory: {output_dir}")
     print(f"Words per sentence: {words_per_sentence}")
+    print("Note: Punctuation will be removed from text (commas, periods, etc.)")
     if max_sentences:
         print(f"Max sentences: {max_sentences:,}")
     if max_files:
@@ -536,6 +570,7 @@ def preprocess_wmt14_news(news_file_path: str, output_dir: str, words_per_senten
     existing_files = [f for f in os.listdir(output_dir) if f.startswith("0")]
     if existing_files:
         print(f"Found {len(existing_files)} existing processed files. Skipping preprocessing.")
+        print("⚠️  WARNING: If these files contain punctuation, delete them and reprocess to apply cleaning.")
         return output_dir
     
     # Step 1: Basic preprocessing
@@ -548,10 +583,11 @@ def preprocess_wmt14_news(news_file_path: str, output_dir: str, words_per_senten
     
     with open(news_file_path, 'r', encoding='utf-8') as f:
         for line in f:
-            line = line.strip()
-            if line:  # Skip empty lines
+            # Clean text: remove punctuation and normalize
+            cleaned_line = clean_text_remove_punctuation(line)
+            if cleaned_line:  # Skip empty lines after cleaning
                 # Split into words and group into chunks
-                words = line.split()
+                words = cleaned_line.split()
                 for i in range(0, len(words), words_per_sentence):
                     sentence_words = words[i:i + words_per_sentence]
                     if len(sentence_words) >= 2:  # Skip very short sentences

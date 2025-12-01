@@ -110,7 +110,16 @@ def handle_vocab(data_path: str, min_occurs_by_sentence: int, freq_exponent: flo
 
 
 def get_subsampling_weights_and_negative_sampling_array(vocab: List[Tuple[str, float]], t: float) -> Tuple[ndarray, ndarray]:
-    """Calculate subsampling weights and create negative sampling array."""
+    """
+    Calculate subsampling weights and create negative sampling array.
+    
+    Negative sampling array size is dynamically adjusted based on vocabulary size:
+    - For small vocabs (< 10k): uses 1M (original default)
+    - For medium vocabs (10k-100k): uses 10M
+    - For large vocabs (> 100k): uses 100M (same as word2vec.c original)
+    
+    This ensures all words appear in the array and maintains distribution accuracy.
+    """
     # Subsampling weights
     tot_wgt: int = sum([c for _, c in vocab])
     freqs: List[float] = [c/tot_wgt for _, c in vocab]
@@ -118,12 +127,35 @@ def get_subsampling_weights_and_negative_sampling_array(vocab: List[Tuple[str, f
     probs: List[float] = [max(0.0, 1-math.sqrt(t/freq)) if freq > 0 else 0.0 for freq in freqs]
 
     # Negative sampling array - precompute for efficient sampling
-    arr_len = 1000000
+    vocab_size = len(vocab)
+    
+    # Dynamically adjust arr_len based on vocabulary size
+    # Word2vec.c original uses 1e8 (100M), we scale based on vocab size
+    if vocab_size < 10000:
+        arr_len = 1000000  # 1M for small vocabs
+    elif vocab_size < 100000:
+        arr_len = 10000000  # 10M for medium vocabs
+    else:
+        arr_len = 100000000  # 100M for large vocabs (same as word2vec.c)
+    
+    print(f"Creating negative sampling array with size {arr_len:,} for vocab size {vocab_size:,}")
+    
     w2 = [round(f*arr_len) for f in freqs]
+    
+    # Check if any words would be excluded (rounded to 0)
+    excluded_count = sum(1 for scaled in w2 if scaled == 0)
+    if excluded_count > 0:
+        print(f"⚠️  WARNING: {excluded_count} words have frequency too low and will be excluded from negative sampling")
+        print(f"   Consider increasing arr_len or reducing min_occurs threshold")
+    
     neg_arr = []
     for i, scaled in enumerate(w2):
-        neg_arr.extend([i]*scaled)
-
+        if scaled > 0:  # Only add words that appear at least once
+            neg_arr.extend([i]*scaled)
+    
+    actual_arr_size = len(neg_arr)
+    print(f"Negative sampling array created: {actual_arr_size:,} entries ({actual_arr_size/1e6:.2f}M)")
+    
     return np.asarray(probs, dtype=np.float32), np.asarray(neg_arr, dtype=np.int32)
 
 

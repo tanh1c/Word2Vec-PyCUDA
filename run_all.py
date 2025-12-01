@@ -526,7 +526,10 @@ def main():
     # 10. Model Comparison (Custom Skip-gram vs CBOW)
     step_num = 7 if not use_gensim else 10
     print_section_header(f"STEP {step_num}: COMPARING CUSTOM MODELS (Skip-gram vs CBOW)")
-    comparison = compare_models("./output/vectors_skipgram", "./output/vectors_cbow")
+    # Pass pre-computed accuracy values to avoid re-evaluating
+    comparison = compare_models("./output/vectors_skipgram", "./output/vectors_cbow",
+                                sg_acc=sg_acc, sg_details=sg_details,
+                                cbow_acc=cbow_acc, cbow_details=cbow_details)
     
     # 11. Visualizations
     step_num = 8 if not use_gensim else 11
