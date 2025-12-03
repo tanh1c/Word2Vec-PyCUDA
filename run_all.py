@@ -410,20 +410,37 @@ def main():
     
     # 5. Evaluate Skip-gram
     print_section_header("STEP 5: EVALUATING SKIP-GRAM MODEL")
-    sg_acc, sg_details = word_analogy_test("./output/vectors_skipgram")
+    sg_result, sg_details = word_analogy_test("./output/vectors_skipgram")
+
+    sg_sem   = sg_result["semantic_accuracy"]
+    sg_syn   = sg_result["syntactic_accuracy"]
+    sg_total = sg_result["total_accuracy"]
+
     sg_sim = similarity_test("./output/vectors_skipgram")
+
     save_evaluation_results({
-        "accuracy": sg_acc,
+        "semantic_accuracy": sg_sem,
+        "syntactic_accuracy": sg_syn,
+        "total_accuracy": sg_total,
         "details": sg_details,
         "similarity_test": sg_sim
     }, "./output/skipgram_eval.json")
-    
+
+
     # 6. Evaluate CBOW
     print_section_header("STEP 6: EVALUATING CBOW MODEL")
-    cbow_acc, cbow_details = word_analogy_test("./output/vectors_cbow")
+    cbow_result, cbow_details = word_analogy_test("./output/vectors_cbow")
+
+    cbow_sem   = cbow_result["semantic_accuracy"]
+    cbow_syn   = cbow_result["syntactic_accuracy"]
+    cbow_total = cbow_result["total_accuracy"]
+
     cbow_sim = similarity_test("./output/vectors_cbow")
+
     save_evaluation_results({
-        "accuracy": cbow_acc,
+        "semantic_accuracy": cbow_sem,
+        "syntactic_accuracy": cbow_syn,
+        "total_accuracy": cbow_total,
         "details": cbow_details,
         "similarity_test": cbow_sim
     }, "./output/cbow_eval.json")
@@ -438,8 +455,13 @@ def main():
         print(f"  - Evaluation results: ./output/skipgram_eval.json, ./output/cbow_eval.json")
         print(f"  - Statistics: ./output/vectors_skipgram_stats.json, ./output/vectors_cbow_stats.json")
         print(f"\n📊 Evaluation Results:")
-        print(f"  Skip-gram accuracy: {sg_acc:.4f} ({sg_acc*100:.2f}%)")
-        print(f"  CBOW accuracy: {cbow_acc:.4f} ({cbow_acc*100:.2f}%)")
+        print(f"  Skip-gram semantic:  {sg_sem:.4f} ({sg_sem*100:.2f}%)")
+        print(f"  Skip-gram syntactic: {sg_syn:.4f} ({sg_syn*100:.2f}%)")
+        print(f"  Skip-gram total:     {sg_total:.4f} ({sg_total*100:.2f}%)")
+
+        print(f"  CBOW semantic:        {cbow_sem:.4f} ({cbow_sem*100:.2f}%)")
+        print(f"  CBOW syntactic:       {cbow_syn:.4f} ({cbow_syn*100:.2f}%)")
+        print(f"  CBOW total:           {cbow_total:.4f} ({cbow_total*100:.2f}%)")
         return
     
     # 7. Train Gensim Models (if enabled)

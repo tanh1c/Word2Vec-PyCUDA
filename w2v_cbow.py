@@ -64,7 +64,7 @@ def calc_cbow(
             r: int = math.ceil(r_f * c)
             
             # Collect context words (before and after center word)
-            context_words = cuda.local.array(20, dtype=np.int32)  # Max 2*c context words
+            context_words = cuda.local.array(64, dtype=np.int32)  # Max 2*c context words
             context_count = 0
             
             # Context before center word
@@ -120,8 +120,8 @@ def step_cbow(thread_idx, w1, w2, calc_aux, context_words, context_count,
     negs_arr_len = len(negsample_array)
     
     # 1. Calculate neu1 = average of context word vectors
-    neu1 = cuda.local.array(100, dtype=np.float32)  # Max embedding dimension
-    neu1e = cuda.local.array(100, dtype=np.float32)  # Error accumulation
+    neu1 = cuda.local.array(1000, dtype=np.float32)  # Max embedding dimension
+    neu1e = cuda.local.array(1000, dtype=np.float32)  # Error accumulation
     
     # Initialize neu1 and neu1e
     for i in range(emb_dim):
@@ -265,6 +265,7 @@ def train_cbow(
         # HS only: Use same learning rate as NS (as per word2vec.c original)
         # No learning rate reduction needed - HS and NS use same LR schedule
         pass
+        
     elif hs == 1 and k > 0:
         # HS + NS: Reduce learning rate more to prevent gradient explosion
         print(f"⚠️  WARNING: Using both HS and NS together may cause issues.")
@@ -273,7 +274,10 @@ def train_cbow(
         lr_max = lr_max * 0.5
         lr_min = lr_min * 0.5
     
-    lr_step = (lr_max - lr_min) / (epochs - 1)
+    if epochs > 1:
+        lr_step = (lr_max - lr_min) / (epochs - 1)
+    else:
+        lr_step = (lr_max - lr_min)
 
     print(f"CBOW Training Parameters:")
     print(f"Seed: {seed}")

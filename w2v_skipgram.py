@@ -242,6 +242,7 @@ def train_skipgram(
         # HS only: Use same learning rate as NS (as per word2vec.c original)
         # No learning rate reduction needed - HS and NS use same LR schedule
         pass
+        
     elif hs == 1 and k > 0:
         # HS + NS: Reduce learning rate to prevent gradient explosion
         print(f"⚠️  WARNING: Using both HS and NS together may cause issues.")
@@ -250,7 +251,10 @@ def train_skipgram(
         lr_max = lr_max * 0.5
         lr_min = lr_min * 0.5
     
-    lr_step = (lr_max - lr_min) / (epochs - 1)
+    if epochs > 1:
+        lr_step = (lr_max - lr_min) / (epochs - 1)
+    else:
+        lr_step = (lr_max - lr_min)
 
     print(f"Skip-gram Training Parameters:")
     print(f"Seed: {seed}")
