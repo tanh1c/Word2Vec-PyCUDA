@@ -239,10 +239,9 @@ def train_skipgram(
     original_lr_min = lr_min
     
     if hs == 1 and k == 0:
-        # HS only: Skip-gram is more stable than CBOW, but still reduce LR slightly
-        print(f"⚠️  HS only mode: Reducing learning rate by 20% for better stability.")
-        lr_max = lr_max * 0.8
-        lr_min = lr_min * 0.8
+        # HS only: Use same learning rate as NS (as per word2vec.c original)
+        # No learning rate reduction needed - HS and NS use same LR schedule
+        pass
     elif hs == 1 and k > 0:
         # HS + NS: Reduce learning rate to prevent gradient explosion
         print(f"⚠️  WARNING: Using both HS and NS together may cause issues.")
