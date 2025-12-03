@@ -31,34 +31,71 @@ def download_questions_words(output_path: str = "./data/questions-words.txt") ->
     return output_path
 
 
-def word_analogy_test(vectors_path: str, questions_path: str = None) -> Tuple[float, List[Dict]]:
+def word_analogy_test(vectors_path: str, questions_path: str = None) -> Tuple[dict, List[Dict]]:
     """
     Run word analogy test on trained vectors.
-    Returns (overall_accuracy, details_by_category).
+    Returns dictionary containing: 
+        - semantic_accuracy
+        - syntactic_accuracy
+        - total_accuracy
+    And details_by_category (list).
     """
+
     if questions_path is None:
         questions_path = download_questions_words()
-    
+
     print(f"Loading vectors from: {vectors_path}")
     start = time.time()
     vecs = KeyedVectors.load_word2vec_format(vectors_path, binary=False)
     print(f"Vectors loaded in {time.time() - start:.2f}s")
-    
+
     print(f"Running word analogy test with: {questions_path}")
     eval_start = time.time()
-    acc, details_dict = vecs.evaluate_word_analogies(questions_path, case_insensitive=True)
+    overall_acc, details = vecs.evaluate_word_analogies(questions_path, case_insensitive=True)
     print(f"Word analogy test completed in {time.time() - eval_start:.2f}s")
-    print(f"Overall accuracy: {acc:.4f} ({acc*100:.2f}%)")
-    
-    # Print results by category
-    for category in details_dict:
-        correct = len(category["correct"])
-        total = correct + len(category["incorrect"])
-        cat_acc = correct / total if total > 0 else 0
-        print(f"  {category['section']}: {cat_acc:.4f} ({cat_acc*100:.2f}%) - {correct}/{total}")
-    
-    return acc, details_dict
 
+    # =====================================================
+    #   NEW: Thống kê semantic & syntactic
+    # =====================================================
+    semantic_correct = 0
+    semantic_total = 0
+
+    syntactic_correct = 0
+    syntactic_total = 0
+
+    for cat in details:
+        correct = len(cat["correct"])
+        total = correct + len(cat["incorrect"])
+
+        # Gensim phân category: 
+        # Semantic: bắt đầu bằng "capital", "currency", "family"
+        # Syntactic: các phần còn lại (comparative, superlative, tense,...)
+        section = cat["section"].lower()
+
+        if any(key in section for key in ["capital", "currency", "family"]):
+            semantic_correct += correct
+            semantic_total += total
+        else:
+            syntactic_correct += correct
+            syntactic_total += total
+
+    semantic_acc = semantic_correct / semantic_total if semantic_total > 0 else 0
+    syntactic_acc = syntactic_correct / syntactic_total if syntactic_total > 0 else 0
+
+    # Tổng toàn bộ
+    total_acc = (
+        (semantic_correct + syntactic_correct) /
+        (semantic_total + syntactic_total)
+        if (semantic_total + syntactic_total) > 0 else 0
+    )
+    return (
+        {
+            "semantic_accuracy": semantic_acc,
+            "syntactic_accuracy": syntactic_acc,
+            "total_accuracy": total_acc
+        },
+        details
+    )
 
 def similarity_test(vectors_path: str, test_words: List[str] = None) -> Dict[str, Any]:
     """
