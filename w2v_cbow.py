@@ -262,12 +262,10 @@ def train_cbow(
     original_lr_min = lr_min
     
     if hs == 1 and k == 0:
-        # HS only: Reduce learning rate slightly for better stability
-        # HS is more sensitive to learning rate, especially for CBOW
-        # But original code uses same LR, so we only reduce slightly
-        print(f"⚠️  HS only mode: Reducing learning rate by 20% for better stability.")
-        lr_max = lr_max * 0.8
-        lr_min = lr_min * 0.8
+        # HS only: Use same learning rate as NS (as per word2vec.c original)
+        # No learning rate reduction needed - HS and NS use same LR schedule
+        pass
+        
     elif hs == 1 and k > 0:
         # HS + NS: Reduce learning rate more to prevent gradient explosion
         print(f"⚠️  WARNING: Using both HS and NS together may cause issues.")
