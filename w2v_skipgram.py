@@ -251,7 +251,10 @@ def train_skipgram(
         lr_max = lr_max * 0.5
         lr_min = lr_min * 0.5
     
-    lr_step = (lr_max - lr_min) / (epochs - 1)
+    if epochs > 1:
+        lr_step = (lr_max - lr_min) / (epochs - 1)
+    else:
+        lr_step = (lr_max - lr_min)
 
     print(f"Skip-gram Training Parameters:")
     print(f"Seed: {seed}")
