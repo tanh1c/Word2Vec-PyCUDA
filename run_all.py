@@ -370,19 +370,25 @@ def main():
     
     # 3. Train Skip-gram
     print_section_header("STEP 3: TRAINING SKIP-GRAM MODEL")
+    epochs_value = 1  # Set epochs here for consistency
     skipgram_params = {
-        "epochs": 10,
-        "embed_dim": 100,
+        "epochs": epochs_value,
+        "embed_dim": 600,
         "min_occurs": 5,
         "c": 5,
         "k": 0 if use_hs_only else 5,
         "t": 1e-5,
         "vocab_freq_exponent": 0.75,
         "lr_max": 0.025,
-        "lr_min": 0.0001,
-        "cuda_threads_per_block": 32,
+        # For 1 epoch with large dataset, keep learning rate high (as in paper)
+        # With 1 epoch, we want to use a constant high learning rate
+        "lr_min": 0.025 if epochs_value == 1 else 0.0001,
+        "cuda_threads_per_block": 512,  # Optimized for A100 GPU (was 32, too low)
         "hs": 1 if use_hs else 0
     }
+    
+    if epochs_value == 1:
+        print("  ℹ️  Using 1 epoch: Learning rate will be kept constant at 0.025 (as per paper)")
     
     print("Skip-gram parameters:")
     for key, value in skipgram_params.items():
@@ -415,6 +421,7 @@ def main():
     sg_sem   = sg_result["semantic_accuracy"]
     sg_syn   = sg_result["syntactic_accuracy"]
     sg_total = sg_result["total_accuracy"]
+    sg_acc   = sg_total  # Total accuracy for comparison functions
 
     sg_sim = similarity_test("./output/vectors_skipgram")
 
@@ -434,6 +441,7 @@ def main():
     cbow_sem   = cbow_result["semantic_accuracy"]
     cbow_syn   = cbow_result["syntactic_accuracy"]
     cbow_total = cbow_result["total_accuracy"]
+    cbow_acc   = cbow_total  # Total accuracy for comparison functions
 
     cbow_sim = similarity_test("./output/vectors_cbow")
 

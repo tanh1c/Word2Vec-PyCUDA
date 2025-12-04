@@ -203,13 +203,17 @@ def train_skipgram(
         lr_max: float = 0.025,
         lr_min: float = 0.0025,
         cuda_threads_per_block: int = 32,
-        hs: int = 0):
+        hs: int = 0,
+        max_memory_gb: float = 70.0):
     """
     Train Skip-gram model.
     Based on word2vec.c Skip-gram implementation.
     
     Args:
         hs: Hierarchical Softmax flag (0=NS only, 1=HS, can combine with k>0)
+        max_memory_gb: Maximum GPU memory usage in GB. If estimated memory exceeds this,
+                       the dataset will be automatically split into batches for processing.
+                       Default: 70.0 GB (safe for A100 80GB GPU)
     """
     params = {
         "model_type": "skipgram",
@@ -305,29 +309,74 @@ def train_skipgram(
                        np.asarray(offs_, dtype=np.int32), 
                        np.asarray(lens_, dtype=np.int32))
     sentence_count = len(lens)
-    blocks: int = math.ceil(sentence_count / cuda_threads_per_block)
     
     print(f"Data loaded: {sentence_count:,} sentences, {len(inps):,} total words")
-    print(f"CUDA config: {cuda_threads_per_block} threads/block, {blocks} blocks")
 
     # Initialize weight matrices
     data_init_start = time.time()
     w1, w2 = init_weight_matrices(vocab_size, embed_dim, seed=seed)
-    calc_aux = np.zeros((sentence_count, embed_dim), dtype=np.float32)
     data_size_weights = 4 * (w1.size + w2.size)
     data_size_inputs = 4 * (inps.size + offs.size + lens.size + ssw.size + negs.size)
-    data_size_aux = 4 * calc_aux.size
-    print(f"Weight matrices initialized in {time.time()-data_init_start:.2f}s")
-    print(f"Memory usage: {data_size_weights:,} weights + {data_size_inputs:,} inputs + {data_size_aux:,} aux = {data_size_weights+data_size_inputs+data_size_aux:,} bytes")
+    
+    # Calculate memory usage and determine batch size
+    weights_gb = data_size_weights / (1024**3)
+    inputs_gb = data_size_inputs / (1024**3)
+    
+    # Estimate calc_aux memory for full dataset
+    calc_aux_size_full = sentence_count * embed_dim * 4
+    calc_aux_gb_full = calc_aux_size_full / (1024**3)
+    total_memory_gb = weights_gb + inputs_gb + calc_aux_gb_full
+    
+    # Determine if batch processing is needed
+    use_batch_processing = (total_memory_gb > max_memory_gb)
+    
+    if use_batch_processing:
+        # Calculate batch size based on available memory
+        available_memory_gb = max_memory_gb - weights_gb - inputs_gb
+        # Reserve 5GB for overhead
+        available_memory_gb = max(1.0, available_memory_gb - 5.0)
+        
+        # Calculate max sentences per batch
+        bytes_per_sentence = embed_dim * 4  # float32
+        max_batch_sentences = int((available_memory_gb * 1024**3) / bytes_per_sentence)
+        
+        # Round down to nice numbers for better performance
+        if max_batch_sentences >= 10_000_000:
+            batch_size = 10_000_000
+        elif max_batch_sentences >= 5_000_000:
+            batch_size = 5_000_000
+        elif max_batch_sentences >= 2_000_000:
+            batch_size = 2_000_000
+        elif max_batch_sentences >= 1_000_000:
+            batch_size = 1_000_000
+        else:
+            batch_size = max(100_000, max_batch_sentences)
+        
+        num_batches = math.ceil(sentence_count / batch_size)
+        batch_aux_gb = (batch_size * embed_dim * 4) / (1024**3)
+        batch_total_gb = weights_gb + inputs_gb + batch_aux_gb
+        
+        print(f"\n⚠️  Memory usage would be {total_memory_gb:.1f} GB (exceeds {max_memory_gb} GB limit)")
+        print(f"📦 Using batch processing: {num_batches} batches, {batch_size:,} sentences/batch")
+        print(f"   Memory per batch: {batch_total_gb:.1f} GB (calc_aux: {batch_aux_gb:.1f} GB)")
+    else:
+        batch_size = sentence_count
+        num_batches = 1
+        print(f"\n✅ Memory usage: {total_memory_gb:.1f} GB (within {max_memory_gb} GB limit)")
+        print(f"   Processing all {sentence_count:,} sentences in one batch")
+    
+    blocks: int = math.ceil(batch_size / cuda_threads_per_block)
+    print(f"CUDA config: {cuda_threads_per_block} threads/block, {blocks} blocks per batch")
 
-    # Transfer to GPU
+    # Transfer to GPU - Transfer weights and vocab arrays (these are shared across batches)
     print("Transferring data to GPU...")
     data_transfer_start = time.time()
-    inps_cuda, offs_cuda, lens_cuda = cuda.to_device(inps), cuda.to_device(offs), cuda.to_device(lens)
     ssw_cuda, negs_cuda = cuda.to_device(ssw), cuda.to_device(negs)
     w1_cuda, w2_cuda = cuda.to_device(w1), cuda.to_device(w2)
-    calc_aux_cuda = cuda.to_device(calc_aux)
     exp_table_cuda = cuda.to_device(exp_table)
+    
+    # Keep input arrays on CPU - will slice and transfer per batch
+    # This saves GPU memory
     
     if use_hs:
         syn1_cuda = cuda.to_device(syn1)
@@ -342,14 +391,17 @@ def train_skipgram(
     stats["vocab_size"] = vocab_size
     stats["approx_data_size_weights"] = data_size_weights
     stats["approx_data_size_inputs"] = data_size_inputs
-    stats["approx_data_size_aux"] = data_size_aux
-    stats["approx_data_size_total"] = data_size_weights + data_size_inputs + data_size_aux
-
-    # Initialize CUDA random states
-    print(f"Initializing CUDA random states for {sentence_count:,} threads...")
-    random_init_start = time.time()
-    random_states_cuda = c_random.create_xoroshiro128p_states(sentence_count, seed=seed)
-    print(f"CUDA random states initialized in {time.time()-random_init_start:.2f}s")
+    stats["use_batch_processing"] = use_batch_processing
+    if use_batch_processing:
+        stats["batch_size"] = batch_size
+        stats["num_batches"] = num_batches
+        batch_aux_size = batch_size * embed_dim * 4
+        stats["approx_data_size_aux_per_batch"] = batch_aux_size
+        stats["approx_data_size_total"] = data_size_weights + data_size_inputs + batch_aux_size
+    else:
+        data_size_aux = 4 * (sentence_count * embed_dim)
+        stats["approx_data_size_aux"] = data_size_aux
+        stats["approx_data_size_total"] = data_size_weights + data_size_inputs + data_size_aux
 
     # Prepare HS parameters (use dummy arrays if HS disabled)
     if not use_hs:
@@ -377,21 +429,58 @@ def train_skipgram(
         lr = lr_max - (epoch * lr_step)
         epoch_start = time.time()
         
-        # Launch CUDA kernel
-        calc_skipgram[blocks, cuda_threads_per_block](
-            sentence_count, c, k, lr, w1_cuda, w2_cuda, calc_aux_cuda, 
-            random_states_cuda, ssw_cuda, negs_cuda, inps_cuda, offs_cuda, lens_cuda,
-            use_hs, syn1_param, codes_param, points_param, lengths_param,
-            exp_table_cuda, EXP_TABLE_SIZE, MAX_EXP)
+        # Process each batch
+        for batch_idx in range(num_batches):
+            batch_start = batch_idx * batch_size
+            batch_end = min((batch_idx + 1) * batch_size, sentence_count)
+            batch_sentence_count = batch_end - batch_start
+            
+            if num_batches > 1:
+                print(f"  Epoch {epoch+1}, Batch {batch_idx+1}/{num_batches}: sentences {batch_start:,}-{batch_end:,}")
+            
+            # Calculate word offset for this batch (offsets are cumulative)
+            batch_word_start = offs[batch_start] if batch_start < len(offs) else 0
+            batch_word_end = offs[batch_end] if batch_end < len(offs) else len(inps)
+            batch_word_count = batch_word_end - batch_word_start
+            
+            # Create batch arrays (slicing from GPU arrays)
+            # Note: CUDA arrays support slicing, but we need to create new device arrays for batch
+            batch_lens = lens[batch_start:batch_end]
+            batch_offs_local = offs[batch_start:batch_end] - batch_word_start  # Adjust offsets to start from 0
+            batch_inps_local = inps[batch_word_start:batch_word_end]
+            
+            # Transfer batch arrays to GPU
+            batch_lens_cuda = cuda.to_device(batch_lens)
+            batch_offs_cuda = cuda.to_device(batch_offs_local)
+            batch_inps_cuda = cuda.to_device(batch_inps_local)
+            
+            # Create calc_aux for this batch
+            batch_calc_aux = np.zeros((batch_sentence_count, embed_dim), dtype=np.float32)
+            batch_calc_aux_cuda = cuda.to_device(batch_calc_aux)
+            
+            # Create random states for this batch
+            batch_random_states_cuda = c_random.create_xoroshiro128p_states(
+                batch_sentence_count, seed=seed + epoch * 10000 + batch_idx * 100
+            )
+            
+            # Launch CUDA kernel for this batch
+            batch_blocks = math.ceil(batch_sentence_count / cuda_threads_per_block)
+            calc_skipgram[batch_blocks, cuda_threads_per_block](
+                batch_sentence_count, c, k, lr, w1_cuda, w2_cuda, batch_calc_aux_cuda, 
+                batch_random_states_cuda, ssw_cuda, negs_cuda, batch_inps_cuda, 
+                batch_offs_cuda, batch_lens_cuda,
+                use_hs, syn1_param, codes_param, points_param, lengths_param,
+                exp_table_cuda, EXP_TABLE_SIZE, MAX_EXP)
+            
+            # Free batch arrays from GPU memory
+            del batch_lens_cuda, batch_offs_cuda, batch_inps_cuda, batch_calc_aux_cuda, batch_random_states_cuda
         
-        print(f"  Epoch {epoch+1} kernel launched in {time.time()-epoch_start:.2f}s (LR: {lr:.6f})")
-        
-        # Synchronize
+        # Synchronize after all batches
         sync_start = time.time()
         cuda.synchronize()
-        epoch_times.append(time.time()-epoch_start)
-        print(f"  Synchronized in {time.time()-sync_start:.2f}s")
-        print(f"  → Epoch {epoch+1} completed in {epoch_times[-1]:.2f}s")
+        epoch_time = time.time() - epoch_start
+        epoch_times.append(epoch_time)
+        print(f"  Epoch {epoch+1} completed in {epoch_time:.2f}s (LR: {lr:.6f})")
     
     print(f"\nSkip-gram training completed!")
     print(f"Epoch times - Min: {min(epoch_times):.2f}s, Avg: {np.mean(epoch_times):.2f}s, Max: {max(epoch_times):.2f}s")

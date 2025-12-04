@@ -286,50 +286,109 @@ def preprocess_with_phrases(data_path: str, output_path: str, min_count: int = 5
 
 def download_wmt14_news(output_dir: str = "./data") -> str:
     """
-    Download WMT14 News Crawl dataset from http://www.statmt.org/wmt14/training-monolingual-news-crawl/
-    Returns path to downloaded news file.
+    Download and combine multiple years of WMT14 News Crawl dataset.
+    Downloads years 2011, 2012, 2013 and combines them into a single file.
+    Returns path to combined news file.
     """
-    train_file = "news.2012.en.shuffled"
-    train_gz = f"{train_file}.gz"
-    train_url = "http://www.statmt.org/wmt14/training-monolingual-news-crawl/news.2012.en.shuffled.gz"
+    years = [2012, 2013]  # Download multiple years
+    base_url = "http://www.statmt.org/wmt14/training-monolingual-news-crawl"
     
     output_path = os.path.join(output_dir, "wmt14")
-    news_file = os.path.join(output_path, train_file)
+    combined_file = os.path.join(output_path, "news.combined.en.shuffled")
     
     # Create output directory
     pathlib.Path(output_path).mkdir(parents=True, exist_ok=True)
     
-    # Check if already exists
-    if os.path.isfile(news_file):
-        print(f"WMT14 News file already exists at: {news_file}")
-        return news_file
+    # Check if combined file already exists
+    if os.path.isfile(combined_file):
+        print(f"WMT14 News combined file already exists at: {combined_file}")
+        return combined_file
     
-    gz_path = os.path.join(output_path, train_gz)
+    # Download and extract each year
+    downloaded_files = []
+    for year in years:
+        train_file = f"news.{year}.en.shuffled"
+        train_gz = f"{train_file}.gz"
+        train_url = f"{base_url}/{train_gz}"
+        news_file = os.path.join(output_path, train_file)
+        gz_path = os.path.join(output_path, train_gz)
+        
+        # Check if already extracted
+        if os.path.isfile(news_file):
+            print(f"WMT14 News {year} already exists at: {news_file}")
+            downloaded_files.append(news_file)
+            continue
+        
+        # Download if missing
+        if not os.path.isfile(gz_path):
+            print(f"Downloading WMT14 News {year} ({train_gz})...")
+            try:
+                with requests.get(train_url, stream=True, timeout=30) as response:
+                    response.raise_for_status()
+                    total_size = int(response.headers.get('content-length', 0))
+                    
+                    with open(gz_path, 'wb') as f:
+                        with tqdm.tqdm(total=total_size, unit='B', unit_scale=True, 
+                                     desc=f"Downloading {year}") as pbar:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                                    pbar.update(len(chunk))
+            except requests.exceptions.RequestException as e:
+                print(f"⚠️  Warning: Could not download {train_url}: {e}")
+                print(f"   Skipping year {year}")
+                continue
+        
+        # Extract if needed
+        if os.path.isfile(gz_path) and not os.path.isfile(news_file):
+            print(f"Extracting {gz_path}...")
+            try:
+                with gzip.open(gz_path, "rb") as source, open(news_file, "wb") as target:
+                    target.write(source.read())
+                downloaded_files.append(news_file)
+                print(f"✓ Extracted {train_file}")
+                # Remove gz file to save space
+                os.remove(gz_path)
+            except Exception as e:
+                print(f"⚠️  Error extracting {gz_path}: {e}")
+                continue
     
-    # Download if missing
-    if not os.path.isfile(gz_path):
-        print(f"Downloading {train_gz} from {train_url}...")
-        with requests.get(train_url, stream=True) as response:
-            response.raise_for_status()
-            total_size = int(response.headers.get('content-length', 0))
+    if not downloaded_files:
+        raise FileNotFoundError("No WMT14 News files were successfully downloaded")
+    
+    # Combine all downloaded files into one
+    print(f"\nCombining {len(downloaded_files)} WMT14 News files into: {combined_file}")
+    total_lines = 0
+    
+    with open(combined_file, 'w', encoding='utf-8') as outfile:
+        for i, news_file in enumerate(downloaded_files):
+            if not os.path.isfile(news_file):
+                print(f"⚠️  Warning: {news_file} not found, skipping")
+                continue
             
-            with open(gz_path, 'wb') as f:
-                with tqdm.tqdm(total=total_size, unit='B', unit_scale=True, desc="Downloading") as pbar:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            pbar.update(len(chunk))
+            print(f"  Adding file {i+1}/{len(downloaded_files)}: {os.path.basename(news_file)}")
+            line_count = 0
+            
+            with open(news_file, 'r', encoding='utf-8') as infile:
+                for line in infile:
+                    cleaned = line.strip()
+                    if cleaned:  # Skip empty lines
+                        outfile.write(cleaned + '\n')
+                        line_count += 1
+                        total_lines += 1
+            
+            print(f"    → Added {line_count:,} lines")
     
-    # Extract if needed
-    if not os.path.isfile(news_file):
-        print(f"Extracting {gz_path}...")
-        with gzip.open(gz_path, "rb") as source, open(news_file, "wb") as target:
-            target.write(source.read())
-        # Remove gz file to save space
-        os.remove(gz_path)
+    # Get file size
+    file_size = os.path.getsize(combined_file) / (1024**3)  # GB
     
-    print(f"WMT14 News dataset ready at: {news_file}")
-    return news_file
+    print(f"\n✓ Combined WMT14 News dataset created:")
+    print(f"  File: {combined_file}")
+    print(f"  Total lines: {total_lines:,}")
+    print(f"  Size: {file_size:.2f} GB")
+    print(f"  Estimated words: ~{total_lines * 20:,} (assuming ~20 words/line)")
+    
+    return combined_file
 
 
 def download_wikipedia(output_dir: str = "./data") -> str:

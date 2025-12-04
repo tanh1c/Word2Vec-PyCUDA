@@ -67,15 +67,24 @@ def word_analogy_test(vectors_path: str, questions_path: str = None) -> Tuple[di
         correct = len(cat["correct"])
         total = correct + len(cat["incorrect"])
 
-        # Gensim phân category: 
-        # Semantic: bắt đầu bằng "capital", "currency", "family"
-        # Syntactic: các phần còn lại (comparative, superlative, tense,...)
+        # Phân loại semantic vs syntactic dựa trên categories trong questions-words.txt
+        # Semantic (5 categories): capital-common-countries, capital-world, currency, city-in-state, family
+        # Syntactic (9 categories): gram1-9 (adjective-to-adverb, opposite, comparative, superlative, etc.)
         section = cat["section"].lower()
 
-        if any(key in section for key in ["capital", "currency", "family"]):
+        # Semantic categories keywords (5 categories từ questions-words.txt)
+        # 1. capital-common-countries, capital-world → "capital"
+        # 2. currency → "currency"
+        # 3. city-in-state → "city-in-state"
+        # 4. family → "family"
+        semantic_keywords = ["capital", "currency", "family", "city-in-state"]
+        is_semantic = any(keyword in section for keyword in semantic_keywords)
+        
+        if is_semantic:
             semantic_correct += correct
             semantic_total += total
         else:
+            # Syntactic categories (tất cả các categories còn lại, thường bắt đầu bằng "gram")
             syntactic_correct += correct
             syntactic_total += total
 
@@ -196,13 +205,15 @@ def compare_models(skipgram_path: str, cbow_path: str, output_path: str = "./out
     # Evaluate both models only if not provided
     if sg_acc is None or sg_details is None:
         print("Evaluating Skip-gram model...")
-        sg_acc, sg_details = word_analogy_test(skipgram_path)
+        sg_result, sg_details = word_analogy_test(skipgram_path)
+        sg_acc = sg_result["total_accuracy"]  # Extract total accuracy from dict
     else:
         print("Using pre-computed Skip-gram accuracy...")
     
     if cbow_acc is None or cbow_details is None:
         print("Evaluating CBOW model...")
-        cbow_acc, cbow_details = word_analogy_test(cbow_path)
+        cbow_result, cbow_details = word_analogy_test(cbow_path)
+        cbow_acc = cbow_result["total_accuracy"]  # Extract total accuracy from dict
     else:
         print("Using pre-computed CBOW accuracy...")
     
