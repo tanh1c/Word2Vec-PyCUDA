@@ -12,8 +12,10 @@ import os
 import pathlib
 import re
 import time
+import hashlib
+import pickle
 from collections import defaultdict
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
 from numba import cuda
 import numpy as np
@@ -91,14 +93,67 @@ def bias_freq_counts(vocab: List[Tuple[str, int]], exponent: float) -> List[Tupl
     return jooh
 
 
-def handle_vocab(data_path: str, min_occurs_by_sentence: int, freq_exponent: float):
+def _get_vocab_cache_key(data_path: str, min_occurs_by_sentence: int, freq_exponent: float) -> str:
+    """Generate cache key based on vocabulary parameters."""
+    # Create hash from parameters that affect vocabulary
+    key_string = f"{data_path}_{min_occurs_by_sentence}_{freq_exponent}"
+    return hashlib.md5(key_string.encode()).hexdigest()
+
+
+def _get_vocab_cache_path(cache_key: str) -> str:
+    """Get path to vocabulary cache file."""
+    cache_dir = "./output/vocab_cache"
+    os.makedirs(cache_dir, exist_ok=True)
+    return os.path.join(cache_dir, f"vocab_{cache_key}.pkl")
+
+
+def _save_vocab_cache(vocab: List[Tuple[str, float]], w_to_i: Dict[str, int], 
+                     word_counts: List[int], cache_path: str):
+    """Save vocabulary to cache file."""
+    cache_data = {
+        'vocab': vocab,
+        'w_to_i': w_to_i,
+        'word_counts': word_counts
+    }
+    with open(cache_path, 'wb') as f:
+        pickle.dump(cache_data, f)
+
+
+def _load_vocab_cache(cache_path: str) -> Optional[Tuple[List[Tuple[str, float]], Dict[str, int], List[int]]]:
+    """Load vocabulary from cache file. Returns None if cache doesn't exist or is invalid."""
+    try:
+        if not os.path.exists(cache_path):
+            return None
+        with open(cache_path, 'rb') as f:
+            cache_data = pickle.load(f)
+        return (cache_data['vocab'], cache_data['w_to_i'], cache_data['word_counts'])
+    except Exception:
+        return None
+
+
+def handle_vocab(data_path: str, min_occurs_by_sentence: int, freq_exponent: float, 
+                 use_cache: bool = True):
     """
-    Complete vocabulary handling pipeline.
+    Complete vocabulary handling pipeline with optional caching.
     Returns: (biased_vocab, w_to_i, word_counts)
     - biased_vocab: List of (word, frequency) for negative sampling
     - w_to_i: Dictionary mapping word to index
     - word_counts: List of word counts (for Huffman tree construction)
+    
+    Args:
+        use_cache: If True, try to load from cache or save to cache after building.
+                   Cache is based on data_path, min_occurs_by_sentence, and freq_exponent.
+                   Changing epochs or embed_dim will NOT invalidate the cache.
     """
+    # Try to load from cache
+    if use_cache:
+        cache_key = _get_vocab_cache_key(data_path, min_occurs_by_sentence, freq_exponent)
+        cache_path = _get_vocab_cache_path(cache_key)
+        cached_vocab = _load_vocab_cache(cache_path)
+        if cached_vocab is not None:
+            return cached_vocab
+    
+    # Build vocabulary
     vocab: List[Tuple[str, int, int]] = build_vocab(data_path)
     sorted_vocab: List[Tuple[str, int, int]] = sort_vocab(vocab)
     pruned_vocab: List[Tuple[str, int]] = prune_vocab(min_occurs_by_sentence, sorted_vocab)
@@ -106,6 +161,13 @@ def handle_vocab(data_path: str, min_occurs_by_sentence: int, freq_exponent: flo
     word_counts = [count for _, count in pruned_vocab]
     biased_vocab: List[Tuple[str, float]] = bias_freq_counts(pruned_vocab, freq_exponent)
     w_to_i: Dict[str, int] = {word: idx for idx, (word, _) in enumerate(biased_vocab)}
+    
+    # Save to cache
+    if use_cache:
+        cache_key = _get_vocab_cache_key(data_path, min_occurs_by_sentence, freq_exponent)
+        cache_path = _get_vocab_cache_path(cache_key)
+        _save_vocab_cache(biased_vocab, w_to_i, word_counts, cache_path)
+    
     return biased_vocab, w_to_i, word_counts
 
 
@@ -169,12 +231,30 @@ def get_data_file_names(path: str, seed: int) -> List[str]:
     return data_files
 
 
-def read_all_data_files_ever(dat_path: str, file_names: List[str], w_to_i: Dict[str, int]) -> Tuple[List[int], List[int], List[int]]:
-    """Read all data files and convert to indices."""
+def read_all_data_files_ever(dat_path: str, file_names: List[str], w_to_i: Dict[str, int], 
+                             max_words: int = None) -> Tuple[List[int], List[int], List[int]]:
+    """
+    Read all data files and convert to indices.
+    
+    Args:
+        dat_path: Path to data directory
+        file_names: List of file names to read
+        w_to_i: Word to index mapping
+        max_words: Maximum number of words to read (None = all). If specified, 
+                   will stop reading when total words reach this limit.
+    
+    Returns:
+        Tuple of (inps, offs, lens) where:
+        - inps: List of word indices
+        - offs: List of offsets for each sentence
+        - lens: List of sentence lengths
+    """
     start = time.time()
     inps, offs, lens = [], [], []
     offset_total = 0
     stats = defaultdict(int)
+    total_words_read = 0
+    stopped_early = False
     
     for fn in file_names:
         fp = os.path.join(dat_path, fn)
@@ -182,21 +262,51 @@ def read_all_data_files_ever(dat_path: str, file_names: List[str], w_to_i: Dict[
         too_short_lines = 0
         with open(fp, encoding="utf-8") as f:
             for line in f:
+                # Check if we've reached max_words limit
+                if max_words is not None and total_words_read >= max_words:
+                    stopped_early = True
+                    break
+                
                 words = [word for word in re.split(r"[ .]+", line.strip()) if word]
                 if len(words) < 2:
                     too_short_lines += 1
                     continue
                 idcs = [w_to_i[w] for w in words if w in w_to_i]
                 le = len(idcs)
+                
+                # Check if adding this sentence would exceed max_words
+                if max_words is not None and total_words_read + le > max_words:
+                    # Only add words up to the limit
+                    remaining_words = max_words - total_words_read
+                    if remaining_words > 0:
+                        idcs = idcs[:remaining_words]
+                        le = len(idcs)
+                    else:
+                        stopped_early = True
+                        break
+                
                 ok_lines += 1
                 offs.append(offset_total)
                 lens.append(le)
                 inps.extend(idcs)
                 offset_total += le
+                total_words_read += le
+                
+                # Break if we've reached the limit exactly
+                if max_words is not None and total_words_read >= max_words:
+                    stopped_early = True
+                    break
+        
         stats["file_read_lines_ok"] += ok_lines
         stats["one_word_sentence_lines_which_were_ignored"] += too_short_lines
+        
+        # Break outer loop if we've reached the limit
+        if stopped_early:
+            break
 
     print(f"read_all_data_files_ever() STATS: {stats}")
+    if max_words is not None and stopped_early:
+        print(f"  ⚠️  Stopped early: reached max_words limit of {max_words:,} words")
     tot_tm = time.time()-start
     print(f"read_all_data_files_ever() Total time {tot_tm} s for {len(file_names)} files (avg {tot_tm/len(file_names)} s/file)")
     return inps, offs, lens

@@ -147,7 +147,7 @@ def interactive_menu():
     dataset_options = [
         "Text8 (17M words, ~100MB) - Fast, good for testing",
         "Wikipedia (~500MB) - High quality articles",
-        "WMT14 News (850M words, ~3.2GB) - Large news corpus"
+        "WMT14/WMT15 News (combines 2012-2014, ~1.1B+ words) - Large news corpus"
     ]
     dataset_choice = get_user_choice("📁 STEP 1: Select Dataset", dataset_options, default=0)
     
@@ -169,39 +169,58 @@ def interactive_menu():
     # STEP 3: Size selection (only for WMT14)
     max_sentences = None
     max_files = None
+    max_words = None
     if use_wmt14:
         size_options = [
             "Full dataset (all sentences) - ~850M words",
             "Tiny (100K sentences, ~100MB) - Quick test",
             "Small (1M sentences, ~1GB) - Good balance",
             "Medium (5M sentences, ~5GB) - Larger dataset",
-            "Custom size (enter number of sentences)"
+            "Custom size (enter number of sentences)",
+            "Custom words limit (e.g., 700M words)"
         ]
         size_choice = get_user_choice("📦 STEP 3: Select Dataset Size (WMT14 only)", size_options, default=0)
         
         if size_choice == 0:
             max_sentences = None
             max_files = None
+            max_words = None
         elif size_choice == 1:
             max_sentences = 100000
             max_files = 1
+            max_words = None
         elif size_choice == 2:
             max_sentences = 1000000
             max_files = 10
+            max_words = None
         elif size_choice == 3:
             max_sentences = 5000000
             max_files = 50
-        else:  # Custom
+            max_words = None
+        elif size_choice == 4:  # Custom sentences
             while True:
                 try:
                     custom_input = input("Enter number of sentences: ").strip()
                     max_sentences = int(custom_input)
                     max_files = max(1, max_sentences // 100000)  # Estimate files
+                    max_words = None
+                    break
+                except ValueError:
+                    print("⚠️  Please enter a valid number")
+        else:  # Custom words (size_choice == 5)
+            while True:
+                try:
+                    custom_input = input("Enter number of words (e.g., 700000000 for 700M): ").strip()
+                    max_words = int(custom_input)
+                    max_sentences = None  # Disable sentence limit when using word limit
+                    max_files = None
+                    print(f"  ✓ Will limit training to {max_words:,} words ({max_words/1e6:.1f}M words)")
                     break
                 except ValueError:
                     print("⚠️  Please enter a valid number")
     else:
         size_choice = None
+        max_words = None
     
     # STEP 4: Model selection
     model_options = [
@@ -242,7 +261,9 @@ def interactive_menu():
     print("  CONFIGURATION SUMMARY")
     print("="*60)
     print(f"  📁 Dataset: {dataset_name}")
-    if use_wmt14 and max_sentences:
+    if use_wmt14 and max_words:
+        print(f"  📦 Size: {max_words:,} words ({max_words/1e6:.1f}M words)")
+    elif use_wmt14 and max_sentences:
         print(f"  📦 Size: {max_sentences:,} sentences (~{max_files} files)")
     elif use_wmt14:
         print(f"  📦 Size: Full dataset")
@@ -266,6 +287,7 @@ def interactive_menu():
         'use_hs': use_hs,
         'max_sentences': max_sentences,
         'max_files': max_files,
+        'max_words': max_words,
         'train_skipgram': should_train_skipgram,
         'train_cbow': should_train_cbow,
         'use_phrases': use_phrases,
@@ -346,8 +368,9 @@ def main():
         dataset_name = config['dataset_name']
         use_hs_only = config['use_hs_only']
         use_hs = config['use_hs']
-        max_sentences = config['max_sentences']
-        max_files = config['max_files']
+        max_sentences = config.get('max_sentences', None)
+        max_files = config.get('max_files', None)
+        max_words = config.get('max_words', None)
         should_train_skipgram = config['train_skipgram']
         should_train_cbow = config['train_cbow']
         use_phrases = config['use_phrases']
@@ -360,9 +383,11 @@ def main():
         print("  - Wikipedia Dump (English, ~500MB download)")
         print("  - High quality encyclopedia articles")
     elif use_wmt14:
-        print("  - WMT14 News Crawl (850M words, ~3.2GB)")
+        print("  - WMT14/WMT15 News Crawl (combines WMT14 2012-2013 + WMT15 2014)")
         print("  - Higher quality news articles")
-        if max_sentences:
+        if max_words:
+            print(f"  - Limited to {max_words:,} words ({max_words/1e6:.1f}M words)")
+        elif max_sentences:
             print(f"  - Limited to {max_sentences:,} sentences")
     else:
         print("  - Text8 Wikipedia (17M words, ~100MB)")
@@ -425,8 +450,32 @@ def main():
         # With 1 epoch, we want to use a constant high learning rate
         "lr_min": 0.025 if epochs_value == 1 else 0.0001,
         "cuda_threads_per_block": 512,  # Optimized for A100 GPU (was 32, too low)
-        "hs": 1 if use_hs else 0
+        "hs": 1 if use_hs else 0,
+        "max_words": max_words  # Limit total words for training (None = no limit)
     }
+    
+    # Build vocabulary once if training both models (to save time)
+    shared_vocab = None
+    shared_w_to_i = None
+    shared_word_counts = None
+    shared_ssw = None
+    shared_negs = None
+    
+    if should_train_skipgram and should_train_cbow:
+        print_section_header("STEP 3: BUILDING SHARED VOCABULARY")
+        print("  ℹ️  Building vocabulary once for both Skip-gram and CBOW models")
+        print("  ℹ️  Vocabulary will be cached for future runs (even with different epochs/dim)")
+        from w2v_common import handle_vocab, get_subsampling_weights_and_negative_sampling_array
+        import time
+        start = time.time()
+        shared_vocab, shared_w_to_i, shared_word_counts = handle_vocab(
+            processed_dir, base_params["min_occurs"], freq_exponent=base_params["vocab_freq_exponent"], use_cache=True
+        )
+        shared_ssw, shared_negs = get_subsampling_weights_and_negative_sampling_array(shared_vocab, t=base_params["t"])
+        vocab_size = len(shared_vocab)
+        build_time = time.time() - start
+        print(f"  ✓ Vocabulary {'loaded from cache' if build_time < 1.0 else 'built'} in {build_time:.2f}s. Vocab size: {vocab_size:,}")
+        print(f"  ✓ Vocabulary will be reused for both models\n")
     
     # 3. Train Skip-gram (if selected)
     if should_train_skipgram:
@@ -445,7 +494,13 @@ def main():
         if skipgram_params["hs"] == 1 and skipgram_params["k"] > 0:
             print("  ⚠️  Note: Learning rate will be automatically reduced by 50% to prevent gradient explosion")
         
-        train_skipgram(processed_dir, "./output/vectors_skipgram", **skipgram_params)
+        # Pass shared vocabulary if available
+        if shared_vocab is not None:
+            train_skipgram(processed_dir, "./output/vectors_skipgram", 
+                          vocab=shared_vocab, w_to_i=shared_w_to_i, word_counts=shared_word_counts,
+                          ssw=shared_ssw, negs=shared_negs, **skipgram_params)
+        else:
+            train_skipgram(processed_dir, "./output/vectors_skipgram", **skipgram_params)
     else:
         print_section_header("STEP 3: SKIPPING SKIP-GRAM TRAINING")
         print("  ⏭️  Skip-gram training skipped as requested")
@@ -472,7 +527,13 @@ def main():
         if cbow_params["hs"] == 1 and cbow_params["k"] > 0:
             print("  ⚠️  Note: Learning rate will be automatically reduced by 50% to prevent gradient explosion")
         
-        train_cbow(processed_dir, "./output/vectors_cbow", **cbow_params)
+        # Pass shared vocabulary if available
+        if shared_vocab is not None:
+            train_cbow(processed_dir, "./output/vectors_cbow",
+                      vocab=shared_vocab, w_to_i=shared_w_to_i, word_counts=shared_word_counts,
+                      ssw=shared_ssw, negs=shared_negs, **cbow_params)
+        else:
+            train_cbow(processed_dir, "./output/vectors_cbow", **cbow_params)
     else:
         print_section_header("STEP 4: SKIPPING CBOW TRAINING")
         print("  ⏭️  CBOW training skipped as requested")

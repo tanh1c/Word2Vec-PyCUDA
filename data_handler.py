@@ -286,12 +286,16 @@ def preprocess_with_phrases(data_path: str, output_path: str, min_count: int = 5
 
 def download_wmt14_news(output_dir: str = "./data") -> str:
     """
-    Download and combine multiple years of WMT14 News Crawl dataset.
-    Downloads years 2011, 2012, 2013 and combines them into a single file.
+    Download and combine multiple years of WMT14 and WMT15 News Crawl datasets.
+    Downloads WMT14 years 2012, 2013 and WMT15 year 2014, combines them into a single file.
     Returns path to combined news file.
     """
-    years = [2012, 2013]  # Download multiple years
-    base_url = "http://www.statmt.org/wmt14/training-monolingual-news-crawl"
+    # Define datasets to download: (wmt_version, year, base_url)
+    datasets = [
+        ("WMT14", 2012, "http://www.statmt.org/wmt14/training-monolingual-news-crawl"),
+        ("WMT14", 2013, "http://www.statmt.org/wmt14/training-monolingual-news-crawl"),
+        ("WMT15", 2014, "https://www.statmt.org/wmt15/training-monolingual-news-crawl"),
+    ]
     
     output_path = os.path.join(output_dir, "wmt14")
     combined_file = os.path.join(output_path, "news.combined.en.shuffled")
@@ -301,12 +305,12 @@ def download_wmt14_news(output_dir: str = "./data") -> str:
     
     # Check if combined file already exists
     if os.path.isfile(combined_file):
-        print(f"WMT14 News combined file already exists at: {combined_file}")
+        print(f"WMT14/WMT15 News combined file already exists at: {combined_file}")
         return combined_file
     
-    # Download and extract each year
+    # Download and extract each dataset
     downloaded_files = []
-    for year in years:
+    for wmt_version, year, base_url in datasets:
         train_file = f"news.{year}.en.shuffled"
         train_gz = f"{train_file}.gz"
         train_url = f"{base_url}/{train_gz}"
@@ -315,13 +319,13 @@ def download_wmt14_news(output_dir: str = "./data") -> str:
         
         # Check if already extracted
         if os.path.isfile(news_file):
-            print(f"WMT14 News {year} already exists at: {news_file}")
+            print(f"{wmt_version} News {year} already exists at: {news_file}")
             downloaded_files.append(news_file)
             continue
         
         # Download if missing
         if not os.path.isfile(gz_path):
-            print(f"Downloading WMT14 News {year} ({train_gz})...")
+            print(f"Downloading {wmt_version} News {year} ({train_gz})...")
             try:
                 with requests.get(train_url, stream=True, timeout=30) as response:
                     response.raise_for_status()
@@ -336,7 +340,7 @@ def download_wmt14_news(output_dir: str = "./data") -> str:
                                     pbar.update(len(chunk))
             except requests.exceptions.RequestException as e:
                 print(f"⚠️  Warning: Could not download {train_url}: {e}")
-                print(f"   Skipping year {year}")
+                print(f"   Skipping {wmt_version} year {year}")
                 continue
         
         # Extract if needed
@@ -354,10 +358,10 @@ def download_wmt14_news(output_dir: str = "./data") -> str:
                 continue
     
     if not downloaded_files:
-        raise FileNotFoundError("No WMT14 News files were successfully downloaded")
+        raise FileNotFoundError("No WMT14/WMT15 News files were successfully downloaded")
     
     # Combine all downloaded files into one
-    print(f"\nCombining {len(downloaded_files)} WMT14 News files into: {combined_file}")
+    print(f"\nCombining {len(downloaded_files)} WMT14/WMT15 News files into: {combined_file}")
     total_lines = 0
     
     with open(combined_file, 'w', encoding='utf-8') as outfile:
@@ -382,7 +386,7 @@ def download_wmt14_news(output_dir: str = "./data") -> str:
     # Get file size
     file_size = os.path.getsize(combined_file) / (1024**3)  # GB
     
-    print(f"\n✓ Combined WMT14 News dataset created:")
+    print(f"\n✓ Combined WMT14/WMT15 News dataset created:")
     print(f"  File: {combined_file}")
     print(f"  Total lines: {total_lines:,}")
     print(f"  Size: {file_size:.2f} GB")

@@ -204,7 +204,13 @@ def train_skipgram(
         lr_min: float = 0.0025,
         cuda_threads_per_block: int = 32,
         hs: int = 0,
-        max_memory_gb: float = 70.0):
+        max_memory_gb: float = 70.0,
+        max_words: int = None,
+        vocab: list = None,
+        w_to_i: dict = None,
+        word_counts: list = None,
+        ssw: np.ndarray = None,
+        negs: np.ndarray = None):
     """
     Train Skip-gram model.
     Based on word2vec.c Skip-gram implementation.
@@ -279,13 +285,21 @@ def train_skipgram(
     print(f"Embedding dimension: {embed_dim}")
     print(f"Min word count: {min_occurs}")
 
-    print(f"\nBuilding vocabulary from: {data_path}")
-    start = time.time()
-
-    vocab, w_to_i, word_counts = handle_vocab(data_path, min_occurs, freq_exponent=vocab_freq_exponent)
-    ssw, negs = get_subsampling_weights_and_negative_sampling_array(vocab, t=t)
-    vocab_size = len(vocab)
-    print(f"Vocabulary built in {time.time() - start:.2f}s. Vocab size: {vocab_size:,}")
+    # Build vocabulary if not provided (for reuse when training both models)
+    if vocab is None or w_to_i is None or word_counts is None:
+        print(f"\nBuilding vocabulary from: {data_path}")
+        start = time.time()
+        vocab, w_to_i, word_counts = handle_vocab(data_path, min_occurs, freq_exponent=vocab_freq_exponent, use_cache=True)
+        vocab_size = len(vocab)
+        build_time = time.time() - start
+        print(f"Vocabulary {'loaded from cache' if build_time < 1.0 else 'built'} in {build_time:.2f}s. Vocab size: {vocab_size:,}")
+    else:
+        vocab_size = len(vocab)
+        print(f"\nUsing pre-built vocabulary. Vocab size: {vocab_size:,}")
+    
+    # Build subsampling weights and negative sampling array if not provided
+    if ssw is None or negs is None:
+        ssw, negs = get_subsampling_weights_and_negative_sampling_array(vocab, t=t)
     
     # Create exp table
     print("Creating exp table for fast sigmoid...")
@@ -310,7 +324,9 @@ def train_skipgram(
 
     data_files = get_data_file_names(data_path, seed=seed)
     print(f"Processing {len(data_files)} data files...")
-    inps_, offs_, lens_ = read_all_data_files_ever(data_path, data_files, w_to_i)
+    if max_words is not None:
+        print(f"  ⚠️  Limiting to {max_words:,} total words (will stop early if reached)")
+    inps_, offs_, lens_ = read_all_data_files_ever(data_path, data_files, w_to_i, max_words=max_words)
     inps, offs, lens = (np.asarray(inps_, dtype=np.int32), 
                        np.asarray(offs_, dtype=np.int32), 
                        np.asarray(lens_, dtype=np.int32))
