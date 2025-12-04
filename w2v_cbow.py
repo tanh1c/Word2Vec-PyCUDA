@@ -278,10 +278,13 @@ def train_cbow(
         lr_max = lr_max * 0.5
         lr_min = lr_min * 0.5
     
+    # Learning rate schedule
+    # For multiple epochs: decrease between epochs
+    # For all epochs: decrease LINEARLY within epoch (as per word2vec.c)
     if epochs > 1:
         lr_step = (lr_max - lr_min) / (epochs - 1)
     else:
-        lr_step = (lr_max - lr_min)
+        lr_step = 0.0  # Not used for single epoch (LR decays within epoch)
 
     print(f"CBOW Training Parameters:")
     print(f"Seed: {seed}")
@@ -292,7 +295,10 @@ def train_cbow(
         print(f"Negative samples: {k}")
     if original_lr_max != lr_max:
         print(f"Learning rate adjusted: {original_lr_max} → {lr_max} (reduced for stability)")
-    print(f"Learning rate: {lr_max} → {lr_min} (step: {lr_step:.6f})")
+    if epochs == 1:
+        print(f"Learning rate: {lr_max} → ~0 (will decrease LINEARLY within epoch, as per word2vec.c)")
+    else:
+        print(f"Learning rate: {lr_max} → {lr_min} (step: {lr_step:.6f} between epochs, also decreases LINEARLY within each epoch)")
     print(f"Embedding dimension: {embed_dim}")
     print(f"Min word count: {min_occurs}")
 
@@ -332,8 +338,9 @@ def train_cbow(
                        np.asarray(offs_, dtype=np.int32), 
                        np.asarray(lens_, dtype=np.int32))
     sentence_count = len(lens)
+    total_words = len(inps)  # Total words for LR decay calculation
     
-    print(f"Data loaded: {sentence_count:,} sentences, {len(inps):,} total words")
+    print(f"Data loaded: {sentence_count:,} sentences, {total_words:,} total words")
 
     # Initialize weight matrices
     data_init_start = time.time()
@@ -448,8 +455,12 @@ def train_cbow(
     epoch_times = []
     calc_start = time.time()
     
+    # Track total words processed across all epochs (as per word2vec.c)
+    # Learning rate decays based on total words processed, not per epoch
+    words_processed_total = 0
+    total_words_for_training = epochs * total_words
+    
     for epoch in range(0, epochs):
-        lr = lr_max - (epoch * lr_step)
         epoch_start = time.time()
         
         # Process each batch
@@ -465,6 +476,24 @@ def train_cbow(
             batch_word_start = offs[batch_start] if batch_start < len(offs) else 0
             batch_word_end = offs[batch_end] if batch_end < len(offs) else len(inps)
             batch_word_count = batch_word_end - batch_word_start
+            
+            # Calculate learning rate for this batch (linear decay as per word2vec.c)
+            # Formula from word2vec.c line 397: alpha = starting_alpha * (1 - word_count_actual / (iter * train_words + 1))
+            # word_count_actual is total words processed across all epochs
+            # This ensures LR decreases linearly from lr_max to ~0 over entire training
+            denominator = total_words_for_training + 1
+            current_lr = lr_max * (1.0 - words_processed_total / denominator) if denominator > 0 else lr_max
+            
+            # Apply minimum threshold (as per word2vec.c line 398: min = starting_alpha * 0.0001)
+            min_lr_threshold = lr_max * 0.0001
+            current_lr = max(current_lr, min_lr_threshold)
+            
+            # Also apply lr_min as additional constraint (for multi-epoch training)
+            if epochs > 1:
+                current_lr = max(current_lr, lr_min)
+            
+            if num_batches > 1 and batch_idx == 0:
+                print(f"    Learning rate: {current_lr:.6f} (decaying linearly, progress: {words_processed_total/total_words_for_training*100:.1f}%)")
             
             # Create batch arrays (slicing from CPU arrays)
             batch_lens = lens[batch_start:batch_end]
@@ -485,14 +514,18 @@ def train_cbow(
                 batch_sentence_count, seed=seed + epoch * 10000 + batch_idx * 100
             )
             
-            # Launch CUDA kernel for this batch
+            # Launch CUDA kernel for this batch with current learning rate
             batch_blocks = math.ceil(batch_sentence_count / cuda_threads_per_block)
             calc_cbow[batch_blocks, cuda_threads_per_block](
-                batch_sentence_count, c, k, lr, w1_cuda, w2_cuda, batch_calc_aux_cuda, 
+                batch_sentence_count, c, k, current_lr, w1_cuda, w2_cuda, batch_calc_aux_cuda, 
                 batch_random_states_cuda, ssw_cuda, negs_cuda, batch_inps_cuda, 
                 batch_offs_cuda, batch_lens_cuda,
                 use_hs, syn1_param, codes_param, points_param, lengths_param,
                 exp_table_cuda, EXP_TABLE_SIZE, MAX_EXP)
+            
+            # Update total words processed counter (as per word2vec.c)
+            # Note: Actual words processed may vary due to subsampling, but this is an approximation
+            words_processed_total += batch_word_count
             
             # Free batch arrays from GPU memory
             del batch_lens_cuda, batch_offs_cuda, batch_inps_cuda, batch_calc_aux_cuda, batch_random_states_cuda
@@ -502,7 +535,16 @@ def train_cbow(
         cuda.synchronize()
         epoch_time = time.time() - epoch_start
         epoch_times.append(epoch_time)
-        print(f"  Epoch {epoch+1} completed in {epoch_time:.2f}s (LR: {lr:.6f})")
+        
+        # Final LR after epoch (using same formula as word2vec.c)
+        denominator = total_words_for_training + 1
+        final_lr = lr_max * (1.0 - words_processed_total / denominator) if denominator > 0 else lr_max
+        final_lr = max(final_lr, lr_max * 0.0001)
+        if epochs > 1:
+            final_lr = max(final_lr, lr_min)
+        
+        progress_percent = (words_processed_total / total_words_for_training * 100) if total_words_for_training > 0 else 0.0
+        print(f"  Epoch {epoch+1} completed in {epoch_time:.2f}s (LR: {final_lr:.6f}, Progress: {progress_percent:.1f}%)")
     
     print(f"\nCBOW training completed!")
     print(f"Epoch times - Min: {min(epoch_times):.2f}s, Avg: {np.mean(epoch_times):.2f}s, Max: {max(epoch_times):.2f}s")
