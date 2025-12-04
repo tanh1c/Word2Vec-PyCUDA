@@ -12,8 +12,6 @@ from typing import List, Tuple, Dict
 from collections import defaultdict
 import requests
 import tqdm
-from gensim.scripts import segment_wiki
-from gensim import utils
 
 
 def clean_text_remove_punctuation(text: str) -> str:
@@ -293,7 +291,6 @@ def download_wmt14_news(output_dir: str = "./data") -> str:
     # Define datasets to download: (wmt_version, year, base_url)
     datasets = [
         ("WMT14", 2012, "http://www.statmt.org/wmt14/training-monolingual-news-crawl"),
-        ("WMT14", 2013, "http://www.statmt.org/wmt14/training-monolingual-news-crawl"),
         ("WMT15", 2014, "https://www.statmt.org/wmt15/training-monolingual-news-crawl"),
     ]
     
@@ -393,161 +390,6 @@ def download_wmt14_news(output_dir: str = "./data") -> str:
     print(f"  Estimated words: ~{total_lines * 20:,} (assuming ~20 words/line)")
     
     return combined_file
-
-
-def download_wikipedia(output_dir: str = "./data") -> str:
-    """
-    Download Wikipedia dataset (similar to myw2v demo).
-    Downloads a partial Wikipedia dump and processes it.
-    """
-    # Wikipedia dump URLs (partial dumps for demo)
-    urls = [
-        "https://dumps.wikimedia.org/enwiki/20210801/enwiki-20210801-pages-articles-multistream6.xml-p958046p1483661.bz2"
-    ]
-    filenames = [re.sub(r".*/([^/]+)$", r"\1", url) for url in urls]
-    
-    output_path = os.path.join(output_dir, "wikipedia")
-    pathlib.Path(output_path).mkdir(parents=True, exist_ok=True)
-    
-    # Download files
-    for i, (url, filename) in enumerate(zip(urls, filenames)):
-        file_path = os.path.join(output_path, filename)
-        if os.path.isfile(file_path):
-            print(f"Wikipedia file {filename} already exists, skipping download")
-        else:
-            print(f"Downloading {filename} from {url}...")
-            with requests.get(url, stream=True) as response:
-                response.raise_for_status()
-                total_size = int(response.headers.get('content-length', 0))
-                
-                with open(file_path, 'wb') as f:
-                    with tqdm.tqdm(total=total_size, unit='B', unit_scale=True, desc="Downloading") as pbar:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                pbar.update(len(chunk))
-    
-    return output_path
-
-
-def preprocess_wikipedia(wiki_dir: str, output_dir: str, words_per_sentence: int = 1000) -> str:
-    """
-    Preprocess Wikipedia XML dump into sentence files (similar to myw2v demo).
-    """
-    print(f"Preprocessing Wikipedia dump from: {wiki_dir}")
-    print(f"Output directory: {output_dir}")
-    print(f"Words per sentence: {words_per_sentence}")
-    
-    # Create output directory
-    pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
-    
-    # Check if already processed
-    existing_files = [f for f in os.listdir(output_dir) if f.startswith("0")]
-    if existing_files:
-        print(f"Found {len(existing_files)} existing processed files. Skipping preprocessing.")
-        return output_dir
-    
-    # Find XML files
-    xml_files = [f for f in os.listdir(wiki_dir) if f.endswith('.xml.bz2')]
-    if not xml_files:
-        raise FileNotFoundError(f"No XML files found in {wiki_dir}")
-    
-    print(f"Found {len(xml_files)} XML files to process")
-    
-    # Process each XML file
-    all_sentences = []
-    for xml_file in xml_files:
-        xml_path = os.path.join(wiki_dir, xml_file)
-        json_file = xml_file.replace('.xml.bz2', '.json.gz')
-        json_path = os.path.join(wiki_dir, json_file)
-        
-        # Convert XML to JSON if needed
-        if not os.path.isfile(json_path):
-            print(f"Converting {xml_file} to {json_file}...")
-            segment_wiki.segment_and_write_all_articles(xml_path, json_path)
-        
-        # Process JSON file
-        print(f"Processing {json_file}...")
-        sentences = _process_wikipedia_json(json_path, words_per_sentence)
-        all_sentences.extend(sentences)
-        print(f"  Extracted {len(sentences):,} sentences from {json_file}")
-    
-    print(f"Total sentences: {len(all_sentences):,}")
-    
-    # Save to files (similar to myw2v format)
-    sentences_per_file = 100000
-    file_count = 0
-    current_file_sentences = []
-    
-    for i, sentence in enumerate(all_sentences):
-        current_file_sentences.append(sentence)
-        
-        # Write file when it reaches sentences_per_file or we're at the end
-        if len(current_file_sentences) >= sentences_per_file or i == len(all_sentences) - 1:
-            filename = f"{file_count:04d}"
-            filepath = os.path.join(output_dir, filename)
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                for sent in current_file_sentences:
-                    f.write(sent + '\n')
-            
-            print(f"Wrote {len(current_file_sentences):,} sentences to {filename}")
-            file_count += 1
-            current_file_sentences = []
-    
-    print(f"Preprocessing complete. Created {file_count} files in {output_dir}")
-    return output_dir
-
-
-def _process_wikipedia_json(json_path: str, words_per_sentence: int) -> List[str]:
-    """
-    Process Wikipedia JSON file and extract sentences.
-    Similar to myw2v demo's _clean_up function.
-    """
-    sentences = []
-    
-    with utils.open(json_path, 'rb') as f:
-        for line in f:
-            try:
-                article = json.loads(line)
-                
-                # Process title
-                title_sents = _clean_up_text(article.get("title", ""))
-                sentences.extend(title_sents)
-                
-                # Process section texts
-                for section_text in article.get("section_texts", []):
-                    section_sents = _clean_up_text(section_text)
-                    sentences.extend(section_sents)
-                    
-            except (json.JSONDecodeError, KeyError):
-                continue
-    
-    return sentences
-
-
-def _clean_up_text(text: str) -> List[str]:
-    """
-    Clean up text similar to myw2v demo.
-    """
-    if not text:
-        return []
-    
-    # Split into sentences
-    sentences = re.split(r'[?\n.]+', text)
-    clean_sentences = []
-    
-    for sent_str in sentences:
-        # Clean up text
-        a = re.sub(r'[\t\n]', ' ', sent_str)
-        b = re.sub(r'[ ]{2,}', ' ', a)
-        c = re.sub(r'[^a-zA-Z ]', '', b)  # Keep only letters and spaces
-        words = [w.lower() for w in c.split() if w]
-        
-        if len(words) >= 2:  # Only keep sentences with at least 2 words
-            clean_sentences.append(' '.join(words))
-    
-    return clean_sentences
 
 
 def download_text8(output_dir: str = "./data") -> str:

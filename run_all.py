@@ -21,7 +21,7 @@ except ImportError:
 except Exception as e:
     print(f"⚠️  Could not configure numba: {e}")
 
-from data_handler import download_text8, preprocess_text8, download_wmt14_news, preprocess_wmt14_news, download_wikipedia, preprocess_wikipedia
+from data_handler import download_text8, preprocess_text8, download_wmt14_news, preprocess_wmt14_news
 from w2v_skipgram import train_skipgram
 from w2v_cbow import train_cbow
 from evaluation import word_analogy_test, similarity_test, save_evaluation_results, compare_models, train_gensim_models, evaluate_gensim_models, compare_with_gensim
@@ -146,14 +146,12 @@ def interactive_menu():
     # STEP 1: Dataset selection
     dataset_options = [
         "Text8 (17M words, ~100MB) - Fast, good for testing",
-        "Wikipedia (~500MB) - High quality articles",
         "WMT14/WMT15 News (combines 2012-2014, ~1.1B+ words) - Large news corpus"
     ]
     dataset_choice = get_user_choice("📁 STEP 1: Select Dataset", dataset_options, default=0)
     
-    dataset_name = ["Text8", "Wikipedia", "WMT14 News"][dataset_choice]
-    use_wikipedia = (dataset_choice == 1)
-    use_wmt14 = (dataset_choice == 2)
+    dataset_name = ["Text8", "WMT14 News"][dataset_choice]
+    use_wmt14 = (dataset_choice == 1)
     
     # STEP 2: Training method selection
     training_options = [
@@ -280,7 +278,6 @@ def interactive_menu():
         sys.exit(0)
     
     return {
-        'use_wikipedia': use_wikipedia,
         'use_wmt14': use_wmt14,
         'dataset_name': dataset_name,
         'use_hs_only': use_hs_only,
@@ -306,11 +303,8 @@ def main():
         
         # Parse command line arguments for dataset selection
         use_wmt14 = "--wmt14" in sys.argv or "--news" in sys.argv
-        use_wikipedia = "--wikipedia" in sys.argv or "--wiki" in sys.argv
         
-        if use_wikipedia:
-            dataset_name = "Wikipedia"
-        elif use_wmt14:
+        if use_wmt14:
             dataset_name = "WMT14 News"
         else:
             dataset_name = "Text8"
@@ -363,7 +357,6 @@ def main():
     else:
         # Interactive menu mode (default)
         config = interactive_menu()
-        use_wikipedia = config['use_wikipedia']
         use_wmt14 = config['use_wmt14']
         dataset_name = config['dataset_name']
         use_hs_only = config['use_hs_only']
@@ -379,10 +372,7 @@ def main():
     
     # Print configuration
     print(f"\nDataset: {dataset_name}")
-    if use_wikipedia:
-        print("  - Wikipedia Dump (English, ~500MB download)")
-        print("  - High quality encyclopedia articles")
-    elif use_wmt14:
+    if use_wmt14:
         print("  - WMT14/WMT15 News Crawl (combines WMT14 2012-2013 + WMT15 2014)")
         print("  - Higher quality news articles")
         if max_words:
@@ -390,7 +380,7 @@ def main():
         elif max_sentences:
             print(f"  - Limited to {max_sentences:,} sentences")
     else:
-        print("  - Text8 Wikipedia (17M words, ~100MB)")
+        print("  - Text8 (17M words, ~100MB)")
         print("  - Smaller, faster to download and process")
     
     if use_hs_only:
@@ -422,10 +412,7 @@ def main():
     if use_phrases:
         print("  🔗 Phrase detection: Enabled (will combine frequent bigrams)")
     
-    if use_wikipedia:
-        wiki_dir = download_wikipedia(data_dir)
-        processed_dir = preprocess_wikipedia(wiki_dir, "./data/wikipedia_processed")
-    elif use_wmt14:
+    if use_wmt14:
         news_file = download_wmt14_news(data_dir)
         processed_dir = preprocess_wmt14_news(news_file, "./data/wmt14_processed", 
                                             max_sentences=max_sentences, max_files=max_files,
@@ -794,7 +781,6 @@ def main():
     print(f"\nDataset used: {dataset_name}")
     print("\n💡 TIP: Run 'python run_all.py' (without arguments) for interactive menu!")
     print("\nLegacy command-line usage (still supported):")
-    print("  python run_all.py --wikipedia --hs-only")
     print("  python run_all.py --wmt14 --small --hs-ns --phrases")
     print("  python run_all.py --hs --stop-after-eval")
 

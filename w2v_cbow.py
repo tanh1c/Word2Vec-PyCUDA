@@ -308,13 +308,16 @@ def train_cbow(
     print(f"Embedding dimension: {embed_dim}")
     print(f"Min word count: {min_occurs}")
 
+    # Start timing for total execution
+    start = time.time()
+
     # Build vocabulary if not provided (for reuse when training both models)
     if vocab is None or w_to_i is None or word_counts is None:
         print(f"\nBuilding vocabulary from: {data_path}")
-        start = time.time()
+        vocab_start = time.time()
         vocab, w_to_i, word_counts = handle_vocab(data_path, min_occurs, freq_exponent=vocab_freq_exponent, use_cache=True)
         vocab_size = len(vocab)
-        build_time = time.time() - start
+        build_time = time.time() - vocab_start
         print(f"Vocabulary {'loaded from cache' if build_time < 1.0 else 'built'} in {build_time:.2f}s. Vocab size: {vocab_size:,}")
     else:
         vocab_size = len(vocab)

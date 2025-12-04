@@ -12,8 +12,7 @@ A complete implementation of Word2Vec with both CBOW and Skip-gram models using 
   - HS + NS combination
 - **Datasets Support**: 
   - Text8 corpus
-  - Wikipedia corpus
-  - WMT14 News corpus (with multiple size options)
+  - WMT14/WMT15 News corpus (combines 2012-2014, with multiple size options)
 - **Phrase Detection**: Automatic phrase detection (e.g., "new york" → "new_york")
 - **Evaluation**: Word analogy test, similarity metrics, and Gensim comparison
 - **Visualization**: t-SNE plots, similarity heatmaps, and training comparisons
@@ -92,7 +91,7 @@ python run_all.py
 ```
 
 This will guide you through:
-1. Dataset selection (Text8, Wikipedia, WMT14 News)
+1. Dataset selection (Text8, WMT14/WMT15 News)
 2. Training method (NS only, HS only, HS + NS)
 3. Dataset size (for WMT14: Full, Tiny, Small, Medium, Custom)
 4. Phrase detection (Yes/No)
