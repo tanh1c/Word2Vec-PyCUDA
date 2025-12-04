@@ -403,7 +403,12 @@ def main():
     print_section_header("STEP 4: TRAINING CBOW MODEL")
     cbow_params = skipgram_params.copy()
     cbow_params["lr_max"] = 0.05
-    cbow_params["lr_min"] = 0.0001
+    # For 1 epoch with large dataset, keep learning rate high (same as Skip-gram)
+    # With 1 epoch, we want to use a constant high learning rate
+    cbow_params["lr_min"] = 0.05 if epochs_value == 1 else 0.0001
+    
+    if epochs_value == 1:
+        print("  ℹ️  Using 1 epoch: Learning rate will be kept constant at 0.05 (as per paper)")
     
     print("CBOW parameters:")
     for key, value in cbow_params.items():
