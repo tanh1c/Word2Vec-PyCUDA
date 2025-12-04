@@ -65,15 +65,23 @@ def print_section_header(title: str):
     print(f"{'='*60}")
 
 
-def print_summary(sg_acc: float, cbow_acc: float, sg_stats: dict, cbow_stats: dict):
+def print_summary(sg_acc: float, cbow_acc: float, sg_stats: dict, cbow_stats: dict,
+                 sg_sem: float = None, sg_syn: float = None, 
+                 cbow_sem: float = None, cbow_syn: float = None):
     """Print final summary of results."""
     print_section_header("FINAL SUMMARY")
     
     print(f"Model Performance:")
     if sg_acc is not None:
         print(f"  Skip-gram accuracy: {sg_acc:.4f} ({sg_acc*100:.2f}%)")
+        if sg_sem is not None and sg_syn is not None:
+            print(f"    - Semantic:  {sg_sem:.4f} ({sg_sem*100:.2f}%)")
+            print(f"    - Syntactic: {sg_syn:.4f} ({sg_syn*100:.2f}%)")
     if cbow_acc is not None:
         print(f"  CBOW accuracy: {cbow_acc:.4f} ({cbow_acc*100:.2f}%)")
+        if cbow_sem is not None and cbow_syn is not None:
+            print(f"    - Semantic:  {cbow_sem:.4f} ({cbow_sem*100:.2f}%)")
+            print(f"    - Syntactic: {cbow_syn:.4f} ({cbow_syn*100:.2f}%)")
     if sg_acc is not None and cbow_acc is not None:
         print(f"  Difference: {sg_acc - cbow_acc:.4f} ({(sg_acc - cbow_acc)*100:+.2f}%)")
     
@@ -773,7 +781,9 @@ def main():
         print("Warning: Could not load statistics files")
     
     # 13. Final Summary
-    print_summary(sg_acc, cbow_acc, sg_stats, cbow_stats)
+    print_summary(sg_acc, cbow_acc, sg_stats, cbow_stats,
+                 sg_sem=sg_sem, sg_syn=sg_syn,
+                 cbow_sem=cbow_sem, cbow_syn=cbow_syn)
     
     print(f"\n🎉 Word2Vec training and evaluation completed successfully!")
     print(f"📁 Check the ./output/ directory for all results and visualizations.")
