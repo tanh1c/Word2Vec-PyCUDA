@@ -58,17 +58,17 @@ def print_summary(sg_acc: float, cbow_acc: float, sg_stats: dict, cbow_stats: di
     
     print(f"Model Performance:")
     if sg_acc is not None:
-        print(f"  Skip-gram accuracy: {sg_acc:.4f} ({sg_acc*100:.2f}%)")
+    print(f"  Skip-gram accuracy: {sg_acc:.4f} ({sg_acc*100:.2f}%)")
         if sg_sem is not None and sg_syn is not None:
             print(f"    - Semantic:  {sg_sem:.4f} ({sg_sem*100:.2f}%)")
             print(f"    - Syntactic: {sg_syn:.4f} ({sg_syn*100:.2f}%)")
     if cbow_acc is not None:
-        print(f"  CBOW accuracy: {cbow_acc:.4f} ({cbow_acc*100:.2f}%)")
+    print(f"  CBOW accuracy: {cbow_acc:.4f} ({cbow_acc*100:.2f}%)")
         if cbow_sem is not None and cbow_syn is not None:
             print(f"    - Semantic:  {cbow_sem:.4f} ({cbow_sem*100:.2f}%)")
             print(f"    - Syntactic: {cbow_syn:.4f} ({cbow_syn*100:.2f}%)")
     if sg_acc is not None and cbow_acc is not None:
-        print(f"  Difference: {sg_acc - cbow_acc:.4f} ({(sg_acc - cbow_acc)*100:+.2f}%)")
+    print(f"  Difference: {sg_acc - cbow_acc:.4f} ({(sg_acc - cbow_acc)*100:+.2f}%)")
     
     has_stats = sg_stats or cbow_stats
     if has_stats:
@@ -79,10 +79,10 @@ def print_summary(sg_acc: float, cbow_acc: float, sg_stats: dict, cbow_stats: di
         if cbow_stats:
             cbow_time = cbow_stats.get('epoch_time_total_seconds', 0)
             print(f"  CBOW: {cbow_time:.2f}s")
-        if sg_stats and cbow_stats:
-            sg_time = sg_stats.get('epoch_time_total_seconds', 0)
-            cbow_time = cbow_stats.get('epoch_time_total_seconds', 0)
-            print(f"  Difference: {sg_time - cbow_time:.2f}s")
+    if sg_stats and cbow_stats:
+        sg_time = sg_stats.get('epoch_time_total_seconds', 0)
+        cbow_time = cbow_stats.get('epoch_time_total_seconds', 0)
+        print(f"  Difference: {sg_time - cbow_time:.2f}s")
         
         print(f"\nData Processed:")
         stats = sg_stats if sg_stats else cbow_stats
@@ -94,11 +94,11 @@ def print_summary(sg_acc: float, cbow_acc: float, sg_stats: dict, cbow_stats: di
     
     print(f"\nOutput Files:")
     if sg_acc is not None:
-        print(f"  Skip-gram vectors: ./output/vectors_skipgram")
+    print(f"  Skip-gram vectors: ./output/vectors_skipgram")
         print(f"  Skip-gram evaluation: ./output/skipgram_eval.json")
         print(f"  Skip-gram statistics: ./output/vectors_skipgram_stats.json")
     if cbow_acc is not None:
-        print(f"  CBOW vectors: ./output/vectors_cbow")
+    print(f"  CBOW vectors: ./output/vectors_cbow")
         print(f"  CBOW evaluation: ./output/cbow_eval.json")
         print(f"  CBOW statistics: ./output/vectors_cbow_stats.json")
 
@@ -202,13 +202,13 @@ def main():
         
         if epochs_value == 1:
             print("  ℹ️  Using 1 epoch: Learning rate will be kept constant at 0.025 (as per paper)")
-        
-        print("Skip-gram parameters:")
-        for key, value in skipgram_params.items():
-            print(f"  {key}: {value}")
-        
+    
+    print("Skip-gram parameters:")
+    for key, value in skipgram_params.items():
+        print(f"  {key}: {value}")
+    
         # Validate: HS and NS cannot be used together
-        if skipgram_params["hs"] == 1 and skipgram_params["k"] > 0:
+    if skipgram_params["hs"] == 1 and skipgram_params["k"] > 0:
             raise ValueError("Error: Cannot use HS (hs=1) and Negative Sampling (k>0) together. Please choose either HS only (hs=1, k=0) or NS only (hs=0, k>0).")
         
         # Pass shared vocabulary if available
@@ -217,7 +217,7 @@ def main():
                           vocab=shared_vocab, w_to_i=shared_w_to_i, word_counts=shared_word_counts,
                           ssw=shared_ssw, negs=shared_negs, **skipgram_params)
         else:
-            train_skipgram(processed_dir, "./output/vectors_skipgram", **skipgram_params)
+    train_skipgram(processed_dir, "./output/vectors_skipgram", **skipgram_params)
     else:
         step_num = 3 if (should_train_skipgram and should_train_cbow) else 2
         print_section_header(f"STEP {step_num}: SKIPPING SKIP-GRAM TRAINING")
@@ -226,7 +226,7 @@ def main():
     
     # 4. Train CBOW (if selected)
     if should_train_cbow:
-        print_section_header("STEP 4: TRAINING CBOW MODEL")
+    print_section_header("STEP 4: TRAINING CBOW MODEL")
         cbow_params = base_params.copy()
         # CBOW uses same learning rate as Skip-gram (0.025) to prevent gradient explosion
         cbow_params["lr_max"] = 0.025
@@ -235,13 +235,13 @@ def main():
         
         if epochs_value == 1:
             print("  ℹ️  Using 1 epoch: Learning rate will be kept constant at 0.025 (same as Skip-gram)")
-        
-        print("CBOW parameters:")
-        for key, value in cbow_params.items():
-            print(f"  {key}: {value}")
-        
+    
+    print("CBOW parameters:")
+    for key, value in cbow_params.items():
+        print(f"  {key}: {value}")
+    
         # Validate: HS and NS cannot be used together
-        if cbow_params["hs"] == 1 and cbow_params["k"] > 0:
+    if cbow_params["hs"] == 1 and cbow_params["k"] > 0:
             raise ValueError("Error: Cannot use HS (hs=1) and Negative Sampling (k>0) together. Please choose either HS only (hs=1, k=0) or NS only (hs=0, k>0).")
         
         # Pass shared vocabulary if available
@@ -250,7 +250,7 @@ def main():
                       vocab=shared_vocab, w_to_i=shared_w_to_i, word_counts=shared_word_counts,
                       ssw=shared_ssw, negs=shared_negs, **cbow_params)
         else:
-            train_cbow(processed_dir, "./output/vectors_cbow", **cbow_params)
+    train_cbow(processed_dir, "./output/vectors_cbow", **cbow_params)
     else:
         print_section_header("STEP 4: SKIPPING CBOW TRAINING")
         print("  ⏭️  CBOW training skipped as requested")
@@ -265,7 +265,7 @@ def main():
     sg_sim = None
     
     if should_train_skipgram:
-        print_section_header("STEP 5: EVALUATING SKIP-GRAM MODEL")
+    print_section_header("STEP 5: EVALUATING SKIP-GRAM MODEL")
         sg_result, sg_details = word_analogy_test("./output/vectors_skipgram")
 
         sg_sem   = sg_result["semantic_accuracy"]
@@ -273,15 +273,15 @@ def main():
         sg_total = sg_result["total_accuracy"]
         sg_acc   = sg_total  # Total accuracy for comparison functions
 
-        sg_sim = similarity_test("./output/vectors_skipgram")
+    sg_sim = similarity_test("./output/vectors_skipgram")
 
-        save_evaluation_results({
+    save_evaluation_results({
             "semantic_accuracy": sg_sem,
             "syntactic_accuracy": sg_syn,
             "total_accuracy": sg_total,
-            "details": sg_details,
-            "similarity_test": sg_sim
-        }, "./output/skipgram_eval.json")
+        "details": sg_details,
+        "similarity_test": sg_sim
+    }, "./output/skipgram_eval.json")
     else:
         print_section_header("STEP 5: SKIPPING SKIP-GRAM EVALUATION")
         print("  ⏭️  Skip-gram evaluation skipped (model not trained)")
@@ -296,7 +296,7 @@ def main():
     cbow_sim = None
     
     if should_train_cbow:
-        print_section_header("STEP 6: EVALUATING CBOW MODEL")
+    print_section_header("STEP 6: EVALUATING CBOW MODEL")
         cbow_result, cbow_details = word_analogy_test("./output/vectors_cbow")
 
         cbow_sem   = cbow_result["semantic_accuracy"]
@@ -304,26 +304,26 @@ def main():
         cbow_total = cbow_result["total_accuracy"]
         cbow_acc   = cbow_total  # Total accuracy for comparison functions
 
-        cbow_sim = similarity_test("./output/vectors_cbow")
+    cbow_sim = similarity_test("./output/vectors_cbow")
 
-        save_evaluation_results({
+    save_evaluation_results({
             "semantic_accuracy": cbow_sem,
             "syntactic_accuracy": cbow_syn,
             "total_accuracy": cbow_total,
-            "details": cbow_details,
-            "similarity_test": cbow_sim
-        }, "./output/cbow_eval.json")
+        "details": cbow_details,
+        "similarity_test": cbow_sim
+    }, "./output/cbow_eval.json")
     else:
         print_section_header("STEP 6: SKIPPING CBOW EVALUATION")
         print("  ⏭️  CBOW evaluation skipped (model not trained)")
-    
+        
     # 7. Model Comparison (Custom Skip-gram vs CBOW) - only if both trained
     if should_train_skipgram and should_train_cbow:
         print_section_header("STEP 7: COMPARING CUSTOM MODELS (Skip-gram vs CBOW)")
-        # Pass pre-computed accuracy values to avoid re-evaluating
-        comparison = compare_models("./output/vectors_skipgram", "./output/vectors_cbow",
-                                    sg_acc=sg_acc, sg_details=sg_details,
-                                    cbow_acc=cbow_acc, cbow_details=cbow_details)
+    # Pass pre-computed accuracy values to avoid re-evaluating
+    comparison = compare_models("./output/vectors_skipgram", "./output/vectors_cbow",
+                                sg_acc=sg_acc, sg_details=sg_details,
+                                cbow_acc=cbow_acc, cbow_details=cbow_details)
     else:
         print_section_header("STEP 7: SKIPPING MODEL COMPARISON")
         if should_train_skipgram:
@@ -339,15 +339,15 @@ def main():
         import json
         if should_train_skipgram:
             try:
-                with open("./output/vectors_skipgram_stats.json", "r") as f:
-                    sg_stats = json.load(f)
+        with open("./output/vectors_skipgram_stats.json", "r") as f:
+            sg_stats = json.load(f)
             except FileNotFoundError:
                 pass
         if should_train_cbow:
             try:
-                with open("./output/vectors_cbow_stats.json", "r") as f:
-                    cbow_stats = json.load(f)
-            except FileNotFoundError:
+        with open("./output/vectors_cbow_stats.json", "r") as f:
+            cbow_stats = json.load(f)
+    except FileNotFoundError:
                 pass
     except Exception:
         print("Warning: Could not load statistics files")

@@ -267,7 +267,7 @@ def train_skipgram(
     # For multiple epochs: decrease between epochs
     # For all epochs: decrease LINEARLY within epoch (as per word2vec.c)
     if epochs > 1:
-    lr_step = (lr_max - lr_min) / (epochs - 1)
+        lr_step = (lr_max - lr_min) / (epochs - 1)
     else:
         lr_step = 0.0  # Not used for single epoch (LR decays within epoch)
 
@@ -304,7 +304,7 @@ def train_skipgram(
     
     # Build subsampling weights and negative sampling array if not provided
     if ssw is None or negs is None:
-    ssw, negs = get_subsampling_weights_and_negative_sampling_array(vocab, t=t)
+        ssw, negs = get_subsampling_weights_and_negative_sampling_array(vocab, t=t)
     
     # Create exp table
     print("Creating exp table for fast sigmoid...")
@@ -428,8 +428,8 @@ def train_skipgram(
         stats["approx_data_size_total"] = data_size_weights + data_size_inputs + batch_aux_size
     else:
         data_size_aux = 4 * (sentence_count * embed_dim)
-    stats["approx_data_size_aux"] = data_size_aux
-    stats["approx_data_size_total"] = data_size_weights + data_size_inputs + data_size_aux
+        stats["approx_data_size_aux"] = data_size_aux
+        stats["approx_data_size_total"] = data_size_weights + data_size_inputs + data_size_aux
 
     # Prepare HS parameters (use dummy arrays if HS disabled)
     if not use_hs:
