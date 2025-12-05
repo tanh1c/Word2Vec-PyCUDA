@@ -24,7 +24,7 @@ except Exception as e:
 from data_handler import download_text8, preprocess_text8, download_wmt14_news, preprocess_wmt14_news
 from w2v_skipgram import train_skipgram
 from w2v_cbow import train_cbow
-from evaluation import word_analogy_test, similarity_test, save_evaluation_results, compare_models, train_gensim_models, evaluate_gensim_models, compare_with_gensim
+from evaluation import word_analogy_test, similarity_test, save_evaluation_results, compare_models
 from visualization import plot_tsne, plot_similarity_heatmap, plot_training_comparison, plot_accuracy_comparison
 
 
@@ -245,20 +245,12 @@ def interactive_menu():
     phrase_choice = get_user_choice("🔗 STEP 5: Phrase Detection", phrase_options, default=0)
     use_phrases = (phrase_choice == 1)
     
-    # STEP 6: Gensim training
-    gensim_options = [
-        "Skip Gensim training - Default",
-        "Train and evaluate Gensim models - Compare with custom implementation"
-    ]
-    gensim_choice = get_user_choice("📚 STEP 6: Gensim Training", gensim_options, default=0)
-    use_gensim = (gensim_choice == 1)
-    
-    # STEP 7: Stop after evaluation
+    # STEP 6: Stop after evaluation
     stop_options = [
         "Full pipeline (training + evaluation + visualization) - Default",
         "Stop after evaluation (skip visualization) - Faster"
     ]
-    stop_choice = get_user_choice("⏹️  STEP 7: Stop After Evaluation", stop_options, default=0)
+    stop_choice = get_user_choice("⏹️  STEP 6: Stop After Evaluation", stop_options, default=0)
     stop_after_eval = (stop_choice == 1)
     
     # Summary
@@ -275,7 +267,6 @@ def interactive_menu():
     print(f"  🎯 Training: {training_options[training_choice]}")
     print(f"  🔀 Models: {model_options[model_choice]}")
     print(f"  🔗 Phrases: {'Enabled' if use_phrases else 'Disabled'}")
-    print(f"  📚 Gensim: {'Enabled' if use_gensim else 'Disabled'}")
     print(f"  ⏹️  Stop after eval: {'Yes' if stop_after_eval else 'No'}")
     print("="*60)
     
@@ -295,7 +286,6 @@ def interactive_menu():
         'train_skipgram': should_train_skipgram,
         'train_cbow': should_train_cbow,
         'use_phrases': use_phrases,
-        'use_gensim': use_gensim,
         'stop_after_eval': stop_after_eval
     }
 
@@ -344,9 +334,6 @@ def main():
         # Parse phrase detection option
         use_phrases = "--phrases" in sys.argv or "--phrase" in sys.argv
         
-        # Parse Gensim option
-        use_gensim = "--gensim" in sys.argv
-        
         # Parse stop option
         stop_after_eval = "--stop-after-eval" in sys.argv
         
@@ -374,7 +361,6 @@ def main():
         should_train_skipgram = config['train_skipgram']
         should_train_cbow = config['train_cbow']
         use_phrases = config['use_phrases']
-        use_gensim = config['use_gensim']
         stop_after_eval = config['stop_after_eval']
     
     # Print configuration
@@ -397,9 +383,6 @@ def main():
     
     if use_phrases:
         print("  🔗 Phrase detection: Enabled")
-    
-    if use_gensim:
-        print("  📚 Gensim training: Enabled")
     
     if stop_after_eval:
         print("  ⏹️  Will stop after Step 6 (Evaluation)")
@@ -594,8 +577,8 @@ def main():
         print_section_header("STEP 6: SKIPPING CBOW EVALUATION")
         print("  ⏭️  CBOW evaluation skipped (model not trained)")
     
-    # Check if should stop after evaluation (only if not using Gensim)
-    if stop_after_eval and not use_gensim:
+    # Check if should stop after evaluation
+    if stop_after_eval:
         print_section_header("STOPPING AFTER STEP 6")
         print("Skipping visualization and comparison steps as requested.")
         print(f"\n✅ Training and evaluation completed!")
@@ -626,106 +609,22 @@ def main():
             print(f"  CBOW total:           {cbow_total:.4f} ({cbow_total*100:.2f}%)")
         return
     
-    # 7. Train Gensim Models (if enabled)
-    gensim_sg_path = None
-    gensim_cbow_path = None
-    gensim_sg_time = None
-    gensim_cbow_time = None
-    gensim_sg_acc = None
-    gensim_sg_details = None
-    gensim_cbow_acc = None
-    gensim_cbow_details = None
-    
-    if use_gensim:
-        print_section_header("STEP 7: TRAINING GENSIM MODELS")
-        gensim_sg_path, gensim_cbow_path, gensim_sg_time, gensim_cbow_time = train_gensim_models(
-            processed_dir,
-            output_dir="./output/gensim",
-            epochs=skipgram_params["epochs"],
-            embed_dim=skipgram_params["embed_dim"],
-            min_count=skipgram_params["min_occurs"],
-            window=skipgram_params["c"],
-            negative=skipgram_params["k"],
-            hs=skipgram_params["hs"],
-            alpha=skipgram_params["lr_max"],
-            min_alpha=skipgram_params["lr_min"]
-        )
-        
-        # 8. Evaluate Gensim Models
-        print_section_header("STEP 8: EVALUATING GENSIM MODELS")
-        gensim_sg_acc, gensim_sg_details, gensim_cbow_acc, gensim_cbow_details = evaluate_gensim_models(
-            gensim_sg_path,
-            gensim_cbow_path,
-            output_dir="./output/gensim"
-        )
-        
-        # 9. Compare with Gensim
-        print_section_header("STEP 9: COMPARING WITH GENSIM")
-        # Load custom model statistics
-        custom_sg_time = None
-        custom_cbow_time = None
-        try:
-            import json
-            with open("./output/vectors_skipgram_stats.json", "r") as f:
-                custom_sg_stats = json.load(f)
-                custom_sg_time = custom_sg_stats.get("epoch_time_total_seconds", None)
-            with open("./output/vectors_cbow_stats.json", "r") as f:
-                custom_cbow_stats = json.load(f)
-                custom_cbow_time = custom_cbow_stats.get("epoch_time_total_seconds", None)
-        except FileNotFoundError:
-            pass
-        
-        gensim_comparison = compare_with_gensim(
-            "./output/vectors_skipgram",
-            "./output/vectors_cbow",
-            gensim_sg_path,
-            gensim_cbow_path,
-            gensim_sg_time,
-            gensim_cbow_time,
-            gensim_sg_acc,
-            gensim_sg_details,
-            gensim_cbow_acc,
-            gensim_cbow_details,
-            custom_sg_time,
-            custom_cbow_time
-        )
-        
-        if stop_after_eval:
-            print_section_header("STOPPING AFTER GENSIM COMPARISON")
-            print("Skipping visualization steps as requested.")
-            print(f"\n✅ Training, evaluation and comparison completed!")
-            print(f"📁 Check the ./output/ directory for:")
-            print(f"  - Custom vectors: ./output/vectors_skipgram, ./output/vectors_cbow")
-            print(f"  - Gensim vectors: ./output/gensim/vectors_skipgram_gensim, ./output/gensim/vectors_cbow_gensim")
-            print(f"  - Evaluation results: ./output/skipgram_eval.json, ./output/cbow_eval.json")
-            print(f"  - Gensim evaluation: ./output/gensim/skipgram_eval.json, ./output/gensim/cbow_eval.json")
-            print(f"  - Comparison: ./output/gensim_comparison.json")
-            print(f"\n📊 Evaluation Results:")
-            print(f"  Custom Skip-gram: {sg_acc:.4f} ({sg_acc*100:.2f}%)")
-            print(f"  Custom CBOW: {cbow_acc:.4f} ({cbow_acc*100:.2f}%)")
-            print(f"  Gensim Skip-gram: {gensim_sg_acc:.4f} ({gensim_sg_acc*100:.2f}%)")
-            print(f"  Gensim CBOW: {gensim_cbow_acc:.4f} ({gensim_cbow_acc*100:.2f}%)")
-            return
-    
-    # 10. Model Comparison (Custom Skip-gram vs CBOW) - only if both trained
+    # 7. Model Comparison (Custom Skip-gram vs CBOW) - only if both trained
     if should_train_skipgram and should_train_cbow:
-        step_num = 7 if not use_gensim else 10
-        print_section_header(f"STEP {step_num}: COMPARING CUSTOM MODELS (Skip-gram vs CBOW)")
+        print_section_header("STEP 7: COMPARING CUSTOM MODELS (Skip-gram vs CBOW)")
         # Pass pre-computed accuracy values to avoid re-evaluating
         comparison = compare_models("./output/vectors_skipgram", "./output/vectors_cbow",
                                     sg_acc=sg_acc, sg_details=sg_details,
                                     cbow_acc=cbow_acc, cbow_details=cbow_details)
     else:
-        step_num = 7 if not use_gensim else 10
-        print_section_header(f"STEP {step_num}: SKIPPING MODEL COMPARISON")
+        print_section_header("STEP 7: SKIPPING MODEL COMPARISON")
         if should_train_skipgram:
             print("  ⏭️  Model comparison skipped (CBOW not trained)")
         elif should_train_cbow:
             print("  ⏭️  Model comparison skipped (Skip-gram not trained)")
     
-    # 11. Visualizations
-    step_num = 8 if not use_gensim else 11
-    print_section_header(f"STEP {step_num}: CREATING VISUALIZATIONS")
+    # 8. Visualizations
+    print_section_header("STEP 8: CREATING VISUALIZATIONS")
     
     # t-SNE plots
     if should_train_skipgram:
