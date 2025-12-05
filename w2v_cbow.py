@@ -476,8 +476,9 @@ def train_cbow(
     
     # Track total words processed across all epochs (as per word2vec.c)
     # Learning rate decays based on total words processed, not per epoch
-    words_processed_total = 0
-    total_words_for_training = epochs * total_words
+    # Use int64 to avoid overflow with large datasets and multiple epochs
+    words_processed_total = np.int64(0)
+    total_words_for_training = np.int64(epochs) * np.int64(total_words)
     
     for epoch in range(0, epochs):
         epoch_start = time.time()
@@ -544,7 +545,8 @@ def train_cbow(
             
             # Update total words processed counter (as per word2vec.c)
             # Note: Actual words processed may vary due to subsampling, but this is an approximation
-            words_processed_total += batch_word_count
+            # Use int64 to avoid overflow with large datasets and multiple epochs
+            words_processed_total = np.int64(words_processed_total) + np.int64(batch_word_count)
             
             # Free batch arrays from GPU memory
             del batch_lens_cuda, batch_offs_cuda, batch_inps_cuda, batch_calc_aux_cuda, batch_random_states_cuda
