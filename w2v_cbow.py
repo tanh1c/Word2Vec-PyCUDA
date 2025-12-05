@@ -239,11 +239,22 @@ def train_cbow(
     Based on word2vec.c CBOW implementation.
     
     Args:
-        hs: Hierarchical Softmax flag (0=NS only, 1=HS, can combine with k>0)
+        hs: Hierarchical Softmax flag (0=NS only, 1=HS only). Cannot combine with k>0.
+        k: Negative sampling count (0=HS only, >0=NS only). Cannot combine with hs=1.
         max_memory_gb: Maximum GPU memory usage in GB. If estimated memory exceeds this,
                        the dataset will be automatically split into batches for processing.
                        Default: 70.0 GB (safe for A100 80GB GPU)
+    
+    Raises:
+        ValueError: If both hs=1 and k>0 are specified (HS and NS cannot be combined).
     """
+    # Validate: HS and NS cannot be used together
+    if hs == 1 and k > 0:
+        raise ValueError(
+            "Error: Cannot use HS (hs=1) and Negative Sampling (k>0) together. "
+            "Please choose either HS only (hs=1, k=0) or NS only (hs=0, k>0)."
+        )
+    
     params = {
         "model_type": "cbow",
         "w2v_version": W2V_VERSION,
@@ -271,24 +282,15 @@ def train_cbow(
     original_lr_max = lr_max
     original_lr_min = lr_min
     
-    if hs == 1 and k == 0:
-        # HS only: Use same learning rate as NS (as per word2vec.c original)
-        # No learning rate reduction needed - HS and NS use same LR schedule
-        pass
-        
-    elif hs == 1 and k > 0:
-        # HS + NS: Reduce learning rate more to prevent gradient explosion
-        print(f"⚠️  WARNING: Using both HS and NS together may cause issues.")
-        print(f"   Consider using only one (hs=1, k=0) or (hs=0, k>0) for better results.")
-        print(f"   Learning rate reduced by 50% to prevent gradient explosion.")
-        lr_max = lr_max * 0.5
-        lr_min = lr_min * 0.5
+    # Learning rate handling: HS only and NS only use the same learning rate
+    # (as per word2vec.c original implementation)
+    # No special adjustment needed for either method
     
     # Learning rate schedule
     # For multiple epochs: decrease between epochs
     # For all epochs: decrease LINEARLY within epoch (as per word2vec.c)
     if epochs > 1:
-        lr_step = (lr_max - lr_min) / (epochs - 1)
+    lr_step = (lr_max - lr_min) / (epochs - 1)
     else:
         lr_step = 0.0  # Not used for single epoch (LR decays within epoch)
 
@@ -325,7 +327,7 @@ def train_cbow(
     
     # Build subsampling weights and negative sampling array if not provided
     if ssw is None or negs is None:
-        ssw, negs = get_subsampling_weights_and_negative_sampling_array(vocab, t=t)
+    ssw, negs = get_subsampling_weights_and_negative_sampling_array(vocab, t=t)
     
     # Create exp table
     print("Creating exp table for fast sigmoid...")
@@ -449,8 +451,8 @@ def train_cbow(
         stats["approx_data_size_total"] = data_size_weights + data_size_inputs + batch_aux_size
     else:
         data_size_aux = 4 * (sentence_count * embed_dim)
-        stats["approx_data_size_aux"] = data_size_aux
-        stats["approx_data_size_total"] = data_size_weights + data_size_inputs + data_size_aux
+    stats["approx_data_size_aux"] = data_size_aux
+    stats["approx_data_size_total"] = data_size_weights + data_size_inputs + data_size_aux
 
     # Prepare HS parameters (use dummy arrays if HS disabled)
     if not use_hs:
@@ -540,9 +542,9 @@ def train_cbow(
                 batch_sentence_count, c, k, current_lr, w1_cuda, w2_cuda, batch_calc_aux_cuda, 
                 batch_random_states_cuda, ssw_cuda, negs_cuda, batch_inps_cuda, 
                 batch_offs_cuda, batch_lens_cuda,
-                use_hs, syn1_param, codes_param, points_param, lengths_param,
-                exp_table_cuda, EXP_TABLE_SIZE, MAX_EXP)
-            
+            use_hs, syn1_param, codes_param, points_param, lengths_param,
+            exp_table_cuda, EXP_TABLE_SIZE, MAX_EXP)
+        
             # Update total words processed counter (as per word2vec.c)
             # Note: Actual words processed may vary due to subsampling, but this is an approximation
             # Use int64 to avoid overflow with large datasets and multiple epochs

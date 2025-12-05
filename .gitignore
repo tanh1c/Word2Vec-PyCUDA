@@ -39,6 +39,7 @@ ENV/
 
 # Project specific
 md/
+Result/
 *.log
 *.pkl
 *.pickle
@@ -59,7 +60,6 @@ txt/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-*.ipynb
 
 # Testing
 .pytest_cache/
@@ -74,4 +74,3 @@ poetry.lock
 Thumbs.db
 .AppleDouble
 .LSOverride
-

@@ -1,33 +1,29 @@
 #!/usr/bin/env python3
 # Copyright 2024 Word2Vec Implementation
 # Main script to run complete Word2Vec pipeline - NOTEBOOK VERSION
-# Đã chỉnh sửa để chạy trong notebook (bỏ interactive menu, thay bằng config variables)
+# Modified to run in notebook (no interactive menu, use config variables)
 
 # ============================================
-# CONFIGURATION - Thay đổi các giá trị này
+# CONFIGURATION - Change these values
 # ============================================
 # Dataset selection
-use_wikipedia = False  # True để dùng Wikipedia
-use_wmt14 = False      # True để dùng WMT14 News
-dataset_name = "Text8" # "Text8", "Wikipedia", hoặc "WMT14 News"
+use_wmt14 = False      # True to use WMT14 News
+dataset_name = "Text8" # "Text8" or "WMT14 News"
 
-# Dataset size (chỉ cho WMT14)
-max_sentences = None   # None = full dataset, hoặc số như 100000
-max_files = None       # None = all files, hoặc số như 10
+# Dataset size (only for WMT14)
+max_sentences = None   # None = full dataset, or number like 100000
+max_files = None       # None = all files, or number like 10
+max_words = None       # None = no limit, or number like 700000000 for 700M words
 
 # Training method
 use_hs_only = False    # True = HS only (HS=1, k=0)
-use_hs = False         # True = HS + NS (HS=1, k=5) hoặc HS only
-# use_hs_only và use_hs không thể cùng True (use_hs_only sẽ override)
+
+# Model selection
+should_train_skipgram = True  # True to train Skip-gram
+should_train_cbow = True      # True to train CBOW
 
 # Phrase detection
-use_phrases = False    # True để enable phrase detection
-
-# Gensim training
-use_gensim = False     # True để train Gensim models
-
-# Stop after evaluation
-stop_after_eval = False # True để skip visualization
+use_phrases = False    # True to enable phrase detection
 
 # ============================================
 # IMPORTS
@@ -36,55 +32,16 @@ import os
 import sys
 from pathlib import Path
 
-# Configure numba-cuda for CUDA PTX compatibility (Official Solution)
-# Based on: https://github.com/googlecolab/colabtools/issues/5081
-try:
-    from numba import config
-    config.CUDA_ENABLE_PYNVJITLINK = 1
-    config.CUDA_LOW_OCCUPANCY_WARNINGS = 0
-    print("✓ numba-cuda configuration set for CUDA PTX compatibility")
-except ImportError:
-    print("⚠️  numba not available - CUDA configuration skipped")
-except Exception as e:
-    print(f"⚠️  Could not configure numba: {e}")
+# Add current directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import các modules (đã được load trong các cell trước)
-from data_handler import download_text8, preprocess_text8, download_wmt14_news, preprocess_wmt14_news, download_wikipedia, preprocess_wikipedia
+# NOTE: Numba-cuda configuration and GPU check should be done by running colab_setup_all.py first
+# This file assumes colab_setup_all.py has already been executed
+
+from data_handler import download_text8, preprocess_text8, download_wmt14_news, preprocess_wmt14_news
 from w2v_skipgram import train_skipgram
 from w2v_cbow import train_cbow
-from evaluation import word_analogy_test, similarity_test, save_evaluation_results, compare_models, train_gensim_models, evaluate_gensim_models, compare_with_gensim
-from visualization import plot_tsne, plot_similarity_heatmap, plot_training_comparison, plot_accuracy_comparison
-
-
-def check_gpu_availability():
-    """Check if CUDA GPU is available."""
-    try:
-        from numba import cuda
-        if cuda.is_available():
-            device = cuda.get_current_device()
-            print(f"✓ CUDA GPU available: {device.name}")
-            
-            # Try to get memory info using pynvml if available
-            try:
-                import pynvml
-                pynvml.nvmlInit()
-                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                total_memory = memory_info.total / 1024**3
-                print(f"  Memory: {total_memory:.1f} GB")
-            except (ImportError, Exception) as e:
-                # Fallback: just show device name without memory info
-                print(f"  Device: {device.name}")
-                print(f"  (Memory info unavailable: {e})")
-            
-            return True
-        else:
-            print("✗ CUDA GPU not available")
-            return False
-    except ImportError:
-        print("✗ Numba CUDA not available")
-        return False
-
+from evaluation import word_analogy_test, similarity_test, save_evaluation_results, compare_models
 
 def print_section_header(title: str):
     """Print formatted section header."""
@@ -93,89 +50,100 @@ def print_section_header(title: str):
     print(f"{'='*60}")
 
 
-def print_summary(sg_acc: float, cbow_acc: float, sg_stats: dict, cbow_stats: dict):
+def print_summary(sg_acc: float, cbow_acc: float, sg_stats: dict, cbow_stats: dict,
+                 sg_sem: float = None, sg_syn: float = None, 
+                 cbow_sem: float = None, cbow_syn: float = None):
     """Print final summary of results."""
     print_section_header("FINAL SUMMARY")
     
     print(f"Model Performance:")
-    print(f"  Skip-gram accuracy: {sg_acc:.4f} ({sg_acc*100:.2f}%)")
-    print(f"  CBOW accuracy: {cbow_acc:.4f} ({cbow_acc*100:.2f}%)")
-    print(f"  Difference: {sg_acc - cbow_acc:.4f} ({(sg_acc - cbow_acc)*100:+.2f}%)")
+    if sg_acc is not None:
+        print(f"  Skip-gram accuracy: {sg_acc:.4f} ({sg_acc*100:.2f}%)")
+        if sg_sem is not None and sg_syn is not None:
+            print(f"    - Semantic:  {sg_sem:.4f} ({sg_sem*100:.2f}%)")
+            print(f"    - Syntactic: {sg_syn:.4f} ({sg_syn*100:.2f}%)")
+    if cbow_acc is not None:
+        print(f"  CBOW accuracy: {cbow_acc:.4f} ({cbow_acc*100:.2f}%)")
+        if cbow_sem is not None and cbow_syn is not None:
+            print(f"    - Semantic:  {cbow_sem:.4f} ({cbow_sem*100:.2f}%)")
+            print(f"    - Syntactic: {cbow_syn:.4f} ({cbow_syn*100:.2f}%)")
+    if sg_acc is not None and cbow_acc is not None:
+        print(f"  Difference: {sg_acc - cbow_acc:.4f} ({(sg_acc - cbow_acc)*100:+.2f}%)")
     
-    if sg_stats and cbow_stats:
-        sg_time = sg_stats.get('epoch_time_total_seconds', 0)
-        cbow_time = cbow_stats.get('epoch_time_total_seconds', 0)
+    has_stats = sg_stats or cbow_stats
+    if has_stats:
         print(f"\nTraining Times:")
-        print(f"  Skip-gram: {sg_time:.2f}s")
-        print(f"  CBOW: {cbow_time:.2f}s")
-        print(f"  Difference: {sg_time - cbow_time:.2f}s")
+        if sg_stats:
+            sg_time = sg_stats.get('epoch_time_total_seconds', 0)
+            print(f"  Skip-gram: {sg_time:.2f}s")
+        if cbow_stats:
+            cbow_time = cbow_stats.get('epoch_time_total_seconds', 0)
+            print(f"  CBOW: {cbow_time:.2f}s")
+        if sg_stats and cbow_stats:
+            sg_time = sg_stats.get('epoch_time_total_seconds', 0)
+            cbow_time = cbow_stats.get('epoch_time_total_seconds', 0)
+            print(f"  Difference: {sg_time - cbow_time:.2f}s")
         
-        sg_words = sg_stats.get('word_count', 0)
-        cbow_words = cbow_stats.get('word_count', 0)
         print(f"\nData Processed:")
-        print(f"  Words: {sg_words:,}")
-        print(f"  Sentences: {sg_stats.get('sentence_count', 0):,}")
-        print(f"  Vocabulary: {sg_stats.get('vocab_size', 0):,}")
+        stats = sg_stats if sg_stats else cbow_stats
+        if stats:
+            words = stats.get('word_count', 0)
+            print(f"  Words: {words:,}")
+            print(f"  Sentences: {stats.get('sentence_count', 0):,}")
+            print(f"  Vocabulary: {stats.get('vocab_size', 0):,}")
     
     print(f"\nOutput Files:")
-    print(f"  Skip-gram vectors: ./output/vectors_skipgram")
-    print(f"  CBOW vectors: ./output/vectors_cbow")
-    print(f"  Visualizations: ./output/*.png")
-    print(f"  Evaluation results: ./output/*.json")
+    if sg_acc is not None:
+        print(f"  Skip-gram vectors: ./output/vectors_skipgram")
+        print(f"  Skip-gram evaluation: ./output/skipgram_eval.json")
+        print(f"  Skip-gram statistics: ./output/vectors_skipgram_stats.json")
+    if cbow_acc is not None:
+        print(f"  CBOW vectors: ./output/vectors_cbow")
+        print(f"  CBOW evaluation: ./output/cbow_eval.json")
+        print(f"  CBOW statistics: ./output/vectors_cbow_stats.json")
 
 
 def main():
     """Main pipeline execution - NOTEBOOK VERSION."""
-    # Config được set ở đầu file (không cần interactive menu)
+    # Config is set at the top of the file (no interactive menu needed)
     
     # Print configuration
     print(f"\nDataset: {dataset_name}")
-    if use_wikipedia:
-        print("  - Wikipedia Dump (English, ~500MB download)")
-        print("  - High quality encyclopedia articles")
-    elif use_wmt14:
-        print("  - WMT14 News Crawl (850M words, ~3.2GB)")
+    if use_wmt14:
+        print("  - WMT14/WMT15 News Crawl (combines WMT14 2012-2013 + WMT15 2014)")
         print("  - Higher quality news articles")
-        if max_sentences:
+        if max_words:
+            print(f"  - Limited to {max_words:,} words ({max_words/1e6:.1f}M words)")
+        elif max_sentences:
             print(f"  - Limited to {max_sentences:,} sentences")
     else:
-        print("  - Text8 Wikipedia (17M words, ~100MB)")
+        print("  - Text8 (17M words, ~100MB)")
         print("  - Smaller, faster to download and process")
     
     if use_hs_only:
         print("  🎯 Training: Hierarchical Softmax ONLY (HS=1, k=0)")
-    elif use_hs:
-        print("  🎯 Training: Hierarchical Softmax + Negative Sampling (HS=1, k>0)")
     else:
-        print("  🎯 Training: Negative Sampling ONLY (HS=0, k>0)")
+        print("  🎯 Training: Negative Sampling ONLY (HS=0, k=5)")
+    
+    if not should_train_skipgram:
+        print("  ⏭️  Skip-gram training: Disabled")
+    if not should_train_cbow:
+        print("  ⏭️  CBOW training: Disabled")
     
     if use_phrases:
         print("  🔗 Phrase detection: Enabled")
     
-    if use_gensim:
-        print("  📚 Gensim training: Enabled")
+    # NOTE: GPU check is skipped here because it should already be done in colab_setup_all.py
+    # If you run this file independently, make sure to run colab_setup_all.py first
     
-    if stop_after_eval:
-        print("  ⏹️  Will stop after Step 6 (Evaluation)")
-    
-    # 1. Setup & GPU Check
-    print_section_header("STEP 1: GPU AVAILABILITY CHECK")
-    if not check_gpu_availability():
-        print("⚠️  Warning: No GPU detected. Training will be slow on CPU.")
-        print("Continuing anyway...")
-        # Bỏ input() - không hoạt động tốt trong notebook
-    
-    # 2. Download & Preprocess Data
-    print_section_header(f"STEP 2: DOWNLOADING & PREPROCESSING {dataset_name.upper()}")
+    # 1. Download & Preprocess Data
+    print_section_header(f"STEP 1: DOWNLOADING & PREPROCESSING {dataset_name.upper()}")
     data_dir = "./data"
     
     if use_phrases:
         print("  🔗 Phrase detection: Enabled (will combine frequent bigrams)")
     
-    if use_wikipedia:
-        wiki_dir = download_wikipedia(data_dir)
-        processed_dir = preprocess_wikipedia(wiki_dir, "./data/wikipedia_processed")
-    elif use_wmt14:
+    if use_wmt14:
         news_file = download_wmt14_news(data_dir)
         processed_dir = preprocess_wmt14_news(news_file, "./data/wmt14_processed", 
                                             max_sentences=max_sentences, max_files=max_files,
@@ -185,229 +153,226 @@ def main():
         processed_dir = preprocess_text8(text8_file, "./data/text8_processed",
                                         use_phrases=use_phrases)
     
-    # 3. Train Skip-gram
-    print_section_header("STEP 3: TRAINING SKIP-GRAM MODEL")
-    skipgram_params = {
-        "epochs": 10,
-        "embed_dim": 100,
+    # Prepare training parameters (used by both models)
+    epochs_value = 1  # Set epochs here for consistency
+    base_params = {
+        "epochs": epochs_value,
+        "embed_dim": 600,
         "min_occurs": 5,
         "c": 5,
         "k": 0 if use_hs_only else 5,
         "t": 1e-5,
         "vocab_freq_exponent": 0.75,
         "lr_max": 0.025,
-        "lr_min": 0.0001,
-        "cuda_threads_per_block": 32,
-        "hs": 1 if use_hs else 0
+        # For 1 epoch with large dataset, keep learning rate high (as in paper)
+        "lr_min": 0.025 if epochs_value == 1 else 0.0001,
+        "cuda_threads_per_block": 512,  # Optimized for A100 GPU
+        "hs": 1 if use_hs_only else 0,
+        "max_words": max_words  # Limit total words for training (None = no limit)
     }
     
-    print("Skip-gram parameters:")
-    for key, value in skipgram_params.items():
-        print(f"  {key}: {value}")
+    # Build vocabulary once if training both models (to save time)
+    shared_vocab = None
+    shared_w_to_i = None
+    shared_word_counts = None
+    shared_ssw = None
+    shared_negs = None
     
-    if skipgram_params["hs"] == 1 and skipgram_params["k"] > 0:
-        print("  ⚠️  Note: Learning rate will be automatically reduced by 50% to prevent gradient explosion")
-    
-    train_skipgram(processed_dir, "./output/vectors_skipgram", **skipgram_params)
-    
-    # 4. Train CBOW
-    print_section_header("STEP 4: TRAINING CBOW MODEL")
-    cbow_params = skipgram_params.copy()
-    cbow_params["lr_max"] = 0.05
-    cbow_params["lr_min"] = 0.0001
-    
-    print("CBOW parameters:")
-    for key, value in cbow_params.items():
-        print(f"  {key}: {value}")
-    
-    if cbow_params["hs"] == 1 and cbow_params["k"] > 0:
-        print("  ⚠️  Note: Learning rate will be automatically reduced by 50% to prevent gradient explosion")
-    
-    train_cbow(processed_dir, "./output/vectors_cbow", **cbow_params)
-    
-    # 5. Evaluate Skip-gram
-    print_section_header("STEP 5: EVALUATING SKIP-GRAM MODEL")
-    sg_acc, sg_details = word_analogy_test("./output/vectors_skipgram")
-    sg_sim = similarity_test("./output/vectors_skipgram")
-    save_evaluation_results({
-        "accuracy": sg_acc,
-        "details": sg_details,
-        "similarity_test": sg_sim
-    }, "./output/skipgram_eval.json")
-    
-    # 6. Evaluate CBOW
-    print_section_header("STEP 6: EVALUATING CBOW MODEL")
-    cbow_acc, cbow_details = word_analogy_test("./output/vectors_cbow")
-    cbow_sim = similarity_test("./output/vectors_cbow")
-    save_evaluation_results({
-        "accuracy": cbow_acc,
-        "details": cbow_details,
-        "similarity_test": cbow_sim
-    }, "./output/cbow_eval.json")
-    
-    # Check if should stop after evaluation (only if not using Gensim)
-    if stop_after_eval and not use_gensim:
-        print_section_header("STOPPING AFTER STEP 6")
-        print("Skipping visualization and comparison steps as requested.")
-        print(f"\n✅ Training and evaluation completed!")
-        print(f"📁 Check the ./output/ directory for:")
-        print(f"  - Vectors: ./output/vectors_skipgram, ./output/vectors_cbow")
-        print(f"  - Evaluation results: ./output/skipgram_eval.json, ./output/cbow_eval.json")
-        print(f"  - Statistics: ./output/vectors_skipgram_stats.json, ./output/vectors_cbow_stats.json")
-        print(f"\n📊 Evaluation Results:")
-        print(f"  Skip-gram accuracy: {sg_acc:.4f} ({sg_acc*100:.2f}%)")
-        print(f"  CBOW accuracy: {cbow_acc:.4f} ({cbow_acc*100:.2f}%)")
-        return
-    
-    # 7. Train Gensim Models (if enabled)
-    gensim_sg_path = None
-    gensim_cbow_path = None
-    gensim_sg_time = None
-    gensim_cbow_time = None
-    gensim_sg_acc = None
-    gensim_sg_details = None
-    gensim_cbow_acc = None
-    gensim_cbow_details = None
-    
-    if use_gensim:
-        print_section_header("STEP 7: TRAINING GENSIM MODELS")
-        gensim_sg_path, gensim_cbow_path, gensim_sg_time, gensim_cbow_time = train_gensim_models(
-            processed_dir,
-            output_dir="./output/gensim",
-            epochs=skipgram_params["epochs"],
-            embed_dim=skipgram_params["embed_dim"],
-            min_count=skipgram_params["min_occurs"],
-            window=skipgram_params["c"],
-            negative=skipgram_params["k"],
-            hs=skipgram_params["hs"],
-            alpha=skipgram_params["lr_max"],
-            min_alpha=skipgram_params["lr_min"]
+    if should_train_skipgram and should_train_cbow:
+        print_section_header("STEP 2: BUILDING SHARED VOCABULARY")
+        print("  ℹ️  Building vocabulary once for both Skip-gram and CBOW models")
+        print("  ℹ️  Vocabulary will be cached for future runs (even with different epochs/dim)")
+        from w2v_common import handle_vocab, get_subsampling_weights_and_negative_sampling_array
+        import time
+        start = time.time()
+        shared_vocab, shared_w_to_i, shared_word_counts = handle_vocab(
+            processed_dir, base_params["min_occurs"], freq_exponent=base_params["vocab_freq_exponent"], use_cache=True
         )
+        shared_ssw, shared_negs = get_subsampling_weights_and_negative_sampling_array(shared_vocab, t=base_params["t"])
+        vocab_size = len(shared_vocab)
+        build_time = time.time() - start
+        print(f"  ✓ Vocabulary {'loaded from cache' if build_time < 1.0 else 'built'} in {build_time:.2f}s. Vocab size: {vocab_size:,}")
+        print(f"  ✓ Vocabulary will be reused for both models\n")
+    
+    # 2/3. Train Skip-gram (if selected)
+    if should_train_skipgram:
+        step_num = 3 if (should_train_skipgram and should_train_cbow) else 2
+        print_section_header(f"STEP {step_num}: TRAINING SKIP-GRAM MODEL")
+        skipgram_params = base_params.copy()
         
-        # 8. Evaluate Gensim Models
-        print_section_header("STEP 8: EVALUATING GENSIM MODELS")
-        gensim_sg_acc, gensim_sg_details, gensim_cbow_acc, gensim_cbow_details = evaluate_gensim_models(
-            gensim_sg_path,
-            gensim_cbow_path,
-            output_dir="./output/gensim"
-        )
+        if epochs_value == 1:
+            print("  ℹ️  Using 1 epoch: Learning rate will be kept constant at 0.025 (as per paper)")
         
-        # 9. Compare with Gensim
-        print_section_header("STEP 9: COMPARING WITH GENSIM")
-        # Load custom model statistics
-        custom_sg_time = None
-        custom_cbow_time = None
-        try:
-            import json
-            with open("./output/vectors_skipgram_stats.json", "r") as f:
-                custom_sg_stats = json.load(f)
-                custom_sg_time = custom_sg_stats.get("epoch_time_total_seconds", None)
-            with open("./output/vectors_cbow_stats.json", "r") as f:
-                custom_cbow_stats = json.load(f)
-                custom_cbow_time = custom_cbow_stats.get("epoch_time_total_seconds", None)
-        except FileNotFoundError:
-            pass
+        print("Skip-gram parameters:")
+        for key, value in skipgram_params.items():
+            print(f"  {key}: {value}")
         
-        gensim_comparison = compare_with_gensim(
-            "./output/vectors_skipgram",
-            "./output/vectors_cbow",
-            gensim_sg_path,
-            gensim_cbow_path,
-            gensim_sg_time,
-            gensim_cbow_time,
-            gensim_sg_acc,
-            gensim_sg_details,
-            gensim_cbow_acc,
-            gensim_cbow_details,
-            custom_sg_time,
-            custom_cbow_time
-        )
+        # Validate: HS and NS cannot be used together
+        if skipgram_params["hs"] == 1 and skipgram_params["k"] > 0:
+            raise ValueError("Error: Cannot use HS (hs=1) and Negative Sampling (k>0) together. Please choose either HS only (hs=1, k=0) or NS only (hs=0, k>0).")
         
-        if stop_after_eval:
-            print_section_header("STOPPING AFTER GENSIM COMPARISON")
-            print("Skipping visualization steps as requested.")
-            print(f"\n✅ Training, evaluation and comparison completed!")
-            print(f"📁 Check the ./output/ directory for:")
-            print(f"  - Custom vectors: ./output/vectors_skipgram, ./output/vectors_cbow")
-            print(f"  - Gensim vectors: ./output/gensim/vectors_skipgram_gensim, ./output/gensim/vectors_cbow_gensim")
-            print(f"  - Evaluation results: ./output/skipgram_eval.json, ./output/cbow_eval.json")
-            print(f"  - Gensim evaluation: ./output/gensim/skipgram_eval.json, ./output/gensim/cbow_eval.json")
-            print(f"  - Comparison: ./output/gensim_comparison.json")
-            print(f"\n📊 Evaluation Results:")
-            print(f"  Custom Skip-gram: {sg_acc:.4f} ({sg_acc*100:.2f}%)")
-            print(f"  Custom CBOW: {cbow_acc:.4f} ({cbow_acc*100:.2f}%)")
-            print(f"  Gensim Skip-gram: {gensim_sg_acc:.4f} ({gensim_sg_acc*100:.2f}%)")
-            print(f"  Gensim CBOW: {gensim_cbow_acc:.4f} ({gensim_cbow_acc*100:.2f}%)")
-            return
+        # Pass shared vocabulary if available
+        if shared_vocab is not None:
+            train_skipgram(processed_dir, "./output/vectors_skipgram", 
+                          vocab=shared_vocab, w_to_i=shared_w_to_i, word_counts=shared_word_counts,
+                          ssw=shared_ssw, negs=shared_negs, **skipgram_params)
+        else:
+            train_skipgram(processed_dir, "./output/vectors_skipgram", **skipgram_params)
+    else:
+        step_num = 3 if (should_train_skipgram and should_train_cbow) else 2
+        print_section_header(f"STEP {step_num}: SKIPPING SKIP-GRAM TRAINING")
+        print("  ⏭️  Skip-gram training skipped as requested")
+        skipgram_params = base_params.copy()  # Still need params for CBOW if training both
     
-    # 10. Model Comparison (Custom Skip-gram vs CBOW)
-    step_num = 7 if not use_gensim else 10
-    print_section_header(f"STEP {step_num}: COMPARING CUSTOM MODELS (Skip-gram vs CBOW)")
-    # Pass pre-computed accuracy values to avoid re-evaluating
-    comparison = compare_models("./output/vectors_skipgram", "./output/vectors_cbow",
-                                sg_acc=sg_acc, sg_details=sg_details,
-                                cbow_acc=cbow_acc, cbow_details=cbow_details)
+    # 4. Train CBOW (if selected)
+    if should_train_cbow:
+        print_section_header("STEP 4: TRAINING CBOW MODEL")
+        cbow_params = base_params.copy()
+        # CBOW uses same learning rate as Skip-gram (0.025) to prevent gradient explosion
+        cbow_params["lr_max"] = 0.025
+        # For 1 epoch with large dataset, keep learning rate high (same as Skip-gram)
+        cbow_params["lr_min"] = 0.025 if epochs_value == 1 else 0.0001
+        
+        if epochs_value == 1:
+            print("  ℹ️  Using 1 epoch: Learning rate will be kept constant at 0.025 (same as Skip-gram)")
+        
+        print("CBOW parameters:")
+        for key, value in cbow_params.items():
+            print(f"  {key}: {value}")
+        
+        # Validate: HS and NS cannot be used together
+        if cbow_params["hs"] == 1 and cbow_params["k"] > 0:
+            raise ValueError("Error: Cannot use HS (hs=1) and Negative Sampling (k>0) together. Please choose either HS only (hs=1, k=0) or NS only (hs=0, k>0).")
+        
+        # Pass shared vocabulary if available
+        if shared_vocab is not None:
+            train_cbow(processed_dir, "./output/vectors_cbow",
+                      vocab=shared_vocab, w_to_i=shared_w_to_i, word_counts=shared_word_counts,
+                      ssw=shared_ssw, negs=shared_negs, **cbow_params)
+        else:
+            train_cbow(processed_dir, "./output/vectors_cbow", **cbow_params)
+    else:
+        print_section_header("STEP 4: SKIPPING CBOW TRAINING")
+        print("  ⏭️  CBOW training skipped as requested")
     
-    # 11. Visualizations
-    step_num = 8 if not use_gensim else 11
-    print_section_header(f"STEP {step_num}: CREATING VISUALIZATIONS")
+    # 5. Evaluate Skip-gram (if trained)
+    sg_result = None
+    sg_details = None
+    sg_sem = None
+    sg_syn = None
+    sg_total = None
+    sg_acc = None
+    sg_sim = None
     
-    # t-SNE plots
-    print("Creating t-SNE visualizations...")
-    plot_tsne("./output/vectors_skipgram", "./output/skipgram_tsne.png")
-    plot_tsne("./output/vectors_cbow", "./output/cbow_tsne.png")
+    if should_train_skipgram:
+        print_section_header("STEP 5: EVALUATING SKIP-GRAM MODEL")
+        sg_result, sg_details = word_analogy_test("./output/vectors_skipgram")
+
+        sg_sem   = sg_result["semantic_accuracy"]
+        sg_syn   = sg_result["syntactic_accuracy"]
+        sg_total = sg_result["total_accuracy"]
+        sg_acc   = sg_total  # Total accuracy for comparison functions
+
+        sg_sim = similarity_test("./output/vectors_skipgram")
+
+        save_evaluation_results({
+            "semantic_accuracy": sg_sem,
+            "syntactic_accuracy": sg_syn,
+            "total_accuracy": sg_total,
+            "details": sg_details,
+            "similarity_test": sg_sim
+        }, "./output/skipgram_eval.json")
+    else:
+        print_section_header("STEP 5: SKIPPING SKIP-GRAM EVALUATION")
+        print("  ⏭️  Skip-gram evaluation skipped (model not trained)")
+
+    # 6. Evaluate CBOW (if trained)
+    cbow_result = None
+    cbow_details = None
+    cbow_sem = None
+    cbow_syn = None
+    cbow_total = None
+    cbow_acc = None
+    cbow_sim = None
     
-    # Similarity heatmaps
-    print("Creating similarity heatmaps...")
-    test_words = ["king", "queen", "man", "woman", "computer", "science", "university", "student"]
-    plot_similarity_heatmap("./output/vectors_skipgram", test_words, "./output/skipgram_heatmap.png")
-    plot_similarity_heatmap("./output/vectors_cbow", test_words, "./output/cbow_heatmap.png")
+    if should_train_cbow:
+        print_section_header("STEP 6: EVALUATING CBOW MODEL")
+        cbow_result, cbow_details = word_analogy_test("./output/vectors_cbow")
+
+        cbow_sem   = cbow_result["semantic_accuracy"]
+        cbow_syn   = cbow_result["syntactic_accuracy"]
+        cbow_total = cbow_result["total_accuracy"]
+        cbow_acc   = cbow_total  # Total accuracy for comparison functions
+
+        cbow_sim = similarity_test("./output/vectors_cbow")
+
+        save_evaluation_results({
+            "semantic_accuracy": cbow_sem,
+            "syntactic_accuracy": cbow_syn,
+            "total_accuracy": cbow_total,
+            "details": cbow_details,
+            "similarity_test": cbow_sim
+        }, "./output/cbow_eval.json")
+    else:
+        print_section_header("STEP 6: SKIPPING CBOW EVALUATION")
+        print("  ⏭️  CBOW evaluation skipped (model not trained)")
     
-    # Training comparison
-    print("Creating training comparison plots...")
-    plot_training_comparison(
-        "./output/vectors_skipgram_stats.json",
-        "./output/vectors_cbow_stats.json",
-        "./output/training_comparison.png"
-    )
+    # 7. Model Comparison (Custom Skip-gram vs CBOW) - only if both trained
+    if should_train_skipgram and should_train_cbow:
+        print_section_header("STEP 7: COMPARING CUSTOM MODELS (Skip-gram vs CBOW)")
+        # Pass pre-computed accuracy values to avoid re-evaluating
+        comparison = compare_models("./output/vectors_skipgram", "./output/vectors_cbow",
+                                    sg_acc=sg_acc, sg_details=sg_details,
+                                    cbow_acc=cbow_acc, cbow_details=cbow_details)
+    else:
+        print_section_header("STEP 7: SKIPPING MODEL COMPARISON")
+        if should_train_skipgram:
+            print("  ⏭️  Model comparison skipped (CBOW not trained)")
+        elif should_train_cbow:
+            print("  ⏭️  Model comparison skipped (Skip-gram not trained)")
     
-    # Accuracy comparison
-    plot_accuracy_comparison(sg_acc, cbow_acc, "./output/accuracy_comparison.png")
-    
-    # 12. Load statistics for summary
+    # Load statistics for summary
     sg_stats = {}
     cbow_stats = {}
     
     try:
         import json
-        with open("./output/vectors_skipgram_stats.json", "r") as f:
-            sg_stats = json.load(f)
-        with open("./output/vectors_cbow_stats.json", "r") as f:
-            cbow_stats = json.load(f)
-    except FileNotFoundError:
+        if should_train_skipgram:
+            try:
+                with open("./output/vectors_skipgram_stats.json", "r") as f:
+                    sg_stats = json.load(f)
+            except FileNotFoundError:
+                pass
+        if should_train_cbow:
+            try:
+                with open("./output/vectors_cbow_stats.json", "r") as f:
+                    cbow_stats = json.load(f)
+            except FileNotFoundError:
+                pass
+    except Exception:
         print("Warning: Could not load statistics files")
     
-    # 13. Final Summary
-    print_summary(sg_acc, cbow_acc, sg_stats, cbow_stats)
+    # Final Summary
+    print_summary(sg_acc, cbow_acc, sg_stats, cbow_stats,
+                 sg_sem=sg_sem, sg_syn=sg_syn,
+                 cbow_sem=cbow_sem, cbow_syn=cbow_syn)
     
     print(f"\n🎉 Word2Vec training and evaluation completed successfully!")
-    print(f"📁 Check the ./output/ directory for all results and visualizations.")
+    print(f"📁 Check the ./output/ directory for all results.")
     
     print(f"\nDataset used: {dataset_name}")
 
 
 if __name__ == "__main__":
-    # Trong notebook, không dùng sys.exit() vì sẽ gây SystemExit exception
+    # In notebook, don't use sys.exit() as it will cause SystemExit exception
     try:
         main()
     except KeyboardInterrupt:
         print("\n\n⚠️  Training interrupted by user.")
-        # Không dùng sys.exit() trong notebook
-        raise  # Re-raise để notebook hiển thị error
+        raise  # Re-raise to show error in notebook
     except Exception as e:
         print(f"\n❌ Error occurred: {e}")
         import traceback
         traceback.print_exc()
-        # Không dùng sys.exit() trong notebook - re-raise exception
-        raise  # Re-raise để notebook hiển thị error
-
+        # Don't use sys.exit() in notebook - re-raise exception
+        raise  # Re-raise to show error in notebook

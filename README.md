@@ -9,7 +9,6 @@ A complete implementation of Word2Vec with both CBOW and Skip-gram models using 
 - **Multiple Training Methods**: 
   - Negative Sampling (NS) only
   - Hierarchical Softmax (HS) only
-  - HS + NS combination
 - **Datasets Support**: 
   - Text8 corpus
   - WMT14/WMT15 News corpus (combines 2012-2014, with multiple size options)
@@ -92,7 +91,7 @@ python run_all.py
 
 This will guide you through:
 1. Dataset selection (Text8, WMT14/WMT15 News)
-2. Training method (NS only, HS only, HS + NS)
+2. Training method (NS only, HS only)
 3. Dataset size (for WMT14: Full, Tiny, Small, Medium, Custom)
 4. Phrase detection (Yes/No)
 5. Gensim training (Yes/No)
@@ -123,7 +122,7 @@ from w2v_cbow import train_cbow
 from evaluation import word_analogy_test, train_gensim_models
 from visualization import plot_tsne
 
-# Train Skip-gram with HS + NS
+# Train Skip-gram with HS only or NS only
 train_skipgram(
     data_path="./data/text8_processed",
     output_path="./output/vectors_skipgram",
@@ -199,7 +198,6 @@ Actual performance on Google Colab T4 GPU (Text8 dataset: 16.6M words, 60,603 vo
 |--------|-----------|------|
 | **NS only** | 103.5s (~1.7 min) | 22.8s (~0.4 min) |
 | **HS only** | 240.2s (~4.0 min) | 57.1s (~1.0 min) |
-| **HS + NS** | 338.5s (~5.6 min) | 65.8s (~1.1 min) |
 
 ### Accuracy (Word Analogy Test)
 
@@ -207,7 +205,6 @@ Actual performance on Google Colab T4 GPU (Text8 dataset: 16.6M words, 60,603 vo
 |--------|-----------|------|
 | **NS only** | 28.37% | 24.89% |
 | **HS only** | 27.80% | 19.34% |
-| **HS + NS** | 29.72% | 24.14% |
 
 ### Memory Usage
 
