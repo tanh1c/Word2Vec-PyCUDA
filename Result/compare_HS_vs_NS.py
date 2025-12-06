@@ -6,7 +6,6 @@ Generate fair comparison graphs considering vocab_size and total_words
 
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
 import seaborn as sns
 import numpy as np
 from pathlib import Path
@@ -58,23 +57,21 @@ def graph1_fair_comparison():
     """
     print("\n[Graph 1] Creating Fair Comparison (Same Data Size)...")
     
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
     
-    # Subplot 1: Group 1 - vocab_size >= 496810 and total_words >= 763998553
-    ax1 = axes[0, 0]
+    # Subplot 1: Group 1 - vocab_size == 520233 and total_words == 783000000
+    ax1 = axes[0]
     
     # Filter for Group 1: Large vocabulary and large dataset
     similar_data = combined_df[
-        (combined_df['vocab_size'] >= 496810) &
-        (combined_df['total_words'] >= 763998553)
+        (combined_df['vocab_size'] == 520233) &
+        (combined_df['total_words'] == 783000000)
     ].copy()
     
     if len(similar_data) > 0:
-        # Get min/max for title
-        min_vocab = int(similar_data['vocab_size'].min())
-        max_vocab = int(similar_data['vocab_size'].max())
-        min_words = int(similar_data['total_words'].min() / 1e6)
-        max_words = int(similar_data['total_words'].max() / 1e6)
+        # Get values for title
+        vocab_val = 520233
+        words_val = 783
         
         similar_data['config_label'] = similar_data.apply(
             lambda x: f"{x['epochs']}ep-{x['embed_dim']}d-{x['model'][0]}", axis=1
@@ -112,14 +109,14 @@ def graph1_fair_comparison():
         ax1.set_xticks(x_pos)
         ax1.set_xticklabels(pivot_similar.index, rotation=45, ha='right', fontsize=10)
         ax1.set_ylabel('Total Accuracy', fontsize=12, fontweight='bold')
-        ax1.set_title(f'Group 1: Large Dataset Comparison\nVocab Size: ≥{min_vocab/1000:.0f}K tokens | Dataset: ≥{min_words}M words', 
+        ax1.set_title(f'Group 1: Large Dataset Comparison\nVocab Size: {vocab_val/1000:.0f}K tokens | Dataset: {words_val}M words', 
                      fontsize=13, fontweight='bold', pad=15)
         ax1.legend(loc='upper left', fontsize=10, frameon=True, fancybox=True, shadow=True)
         ax1.grid(axis='y', alpha=0.3, linestyle='--')
         ax1.set_ylim(bottom=0)
     
     # Subplot 2: Group 2 - vocab_size = 260796 and total_words = 291539433 (exact match)
-    ax2 = axes[0, 1]
+    ax2 = axes[1]
     
     similar_data2 = combined_df[
         (combined_df['vocab_size'] == 260796) &
@@ -171,88 +168,6 @@ def graph1_fair_comparison():
         ax2.grid(axis='y', alpha=0.3, linestyle='--')
         ax2.set_ylim(bottom=0)
     
-    # Subplot 3: Training Efficiency (Accuracy per Training Minute)
-    ax3 = axes[1, 0]
-    
-    efficiency_data = combined_df.groupby(['method', 'model']).agg({
-        'efficiency': 'mean',
-        'total_accuracy': 'mean',
-        'training_time_seconds': 'mean'
-    }).reset_index()
-    
-    efficiency_data['label'] = efficiency_data.apply(
-        lambda x: f"{x['method']} {x['model']}", axis=1
-    )
-    
-    x_pos_eff = range(len(efficiency_data))
-    colors = ['#2E86AB' if m == 'HS' else '#A23B72' for m in efficiency_data['method']]
-    
-    bars = ax3.bar(x_pos_eff, efficiency_data['efficiency'], alpha=0.8, color=colors)
-    
-    for i, (bar, eff, acc, time) in enumerate(zip(bars, efficiency_data['efficiency'], 
-                                                   efficiency_data['total_accuracy'],
-                                                   efficiency_data['training_time_seconds'])):
-        height = bar.get_height()
-        ax3.text(bar.get_x() + bar.get_width()/2., height,
-                f'{eff*1000:.2f}×10⁻³\nAcc: {acc:.2%}\nTime: {time/60:.1f} min',
-                ha='center', va='bottom', fontsize=8)
-    
-    ax3.set_xticks(x_pos_eff)
-    ax3.set_xticklabels(efficiency_data['label'], rotation=45, ha='right', fontsize=10)
-    ax3.set_ylabel('Training Efficiency\n(Accuracy per Training Minute)', fontsize=12, fontweight='bold')
-    ax3.set_title('Training Efficiency Analysis\n(Metric: Accuracy per Minute of Training Time)', 
-                 fontsize=13, fontweight='bold', pad=15)
-    
-    # Create custom legend
-    legend_elements = [
-        Patch(facecolor='#2E86AB', alpha=0.8, label='Hierarchical Softmax'),
-        Patch(facecolor='#A23B72', alpha=0.8, label='Negative Sampling')
-    ]
-    ax3.legend(handles=legend_elements, loc='upper left', fontsize=10, 
-               frameon=True, fancybox=True, shadow=True)
-    ax3.grid(axis='y', alpha=0.3, linestyle='--')
-    ax3.set_ylim(bottom=0)
-    
-    # Subplot 4: Processing Speed (Words per Second)
-    ax4 = axes[1, 1]
-    
-    speed_data = combined_df.groupby(['method', 'model']).agg({
-        'words_per_second': 'mean',
-        'total_words': 'mean',
-        'training_time_seconds': 'mean'
-    }).reset_index()
-    
-    speed_data['label'] = speed_data.apply(
-        lambda x: f"{x['method']} {x['model']}", axis=1
-    )
-    
-    x_pos_speed = range(len(speed_data))
-    colors_speed = ['#2E86AB' if m == 'HS' else '#A23B72' for m in speed_data['method']]
-    
-    bars = ax4.bar(x_pos_speed, speed_data['words_per_second'] / 1000, alpha=0.8, color=colors_speed)
-    
-    for i, (bar, speed) in enumerate(zip(bars, speed_data['words_per_second'])):
-        height = bar.get_height()
-        ax4.text(bar.get_x() + bar.get_width()/2., height,
-                f'{speed/1000:.1f}K\nwords/sec',
-                ha='center', va='bottom', fontsize=8, fontweight='bold')
-    
-    ax4.set_xticks(x_pos_speed)
-    ax4.set_xticklabels(speed_data['label'], rotation=45, ha='right', fontsize=10)
-    ax4.set_ylabel('Processing Throughput\n(×10³ words/second)', fontsize=12, fontweight='bold')
-    ax4.set_title('Data Processing Throughput Analysis\n(Metric: Words Processed per Second)', 
-                 fontsize=13, fontweight='bold', pad=15)
-    
-    # Create custom legend
-    legend_elements = [
-        Patch(facecolor='#2E86AB', alpha=0.8, label='Hierarchical Softmax'),
-        Patch(facecolor='#A23B72', alpha=0.8, label='Negative Sampling')
-    ]
-    ax4.legend(handles=legend_elements, loc='upper left', fontsize=10, 
-               frameon=True, fancybox=True, shadow=True)
-    ax4.grid(axis='y', alpha=0.3, linestyle='--')
-    ax4.set_ylim(bottom=0)
-    
     plt.tight_layout()
     plt.savefig(base_dir / 'Graph1_Fair_Comparison.png', bbox_inches='tight')
     print("  ✓ Saved: Graph1_Fair_Comparison.png")
@@ -276,8 +191,8 @@ def graph2_accuracy_vs_time():
     
     skipgram_data = combined_df[combined_df['model'] == 'Skip-gram'].copy()
     large_dataset = skipgram_data[
-        (skipgram_data['vocab_size'] >= 496810) &
-        (skipgram_data['total_words'] >= 763998553)
+        (skipgram_data['vocab_size'] == 520233) &
+        (skipgram_data['total_words'] == 783000000)
     ].copy()
     
     for method in ['HS', 'NS']:
@@ -308,7 +223,7 @@ def graph2_accuracy_vs_time():
     
     ax1.set_xlabel('Training Time (minutes)', fontsize=12, fontweight='bold')
     ax1.set_ylabel('Total Accuracy', fontsize=12, fontweight='bold')
-    ax1.set_title('Skip-gram: Large Dataset (≥496K vocab, ≥783M words)', 
+    ax1.set_title('Skip-gram: Large Dataset (520K vocab, 783M words)', 
                  fontsize=13, fontweight='bold', pad=15)
     ax1.legend(loc='lower right', fontsize=10, frameon=True, fancybox=True, shadow=True)
     ax1.grid(True, alpha=0.3, linestyle='--', zorder=1)
@@ -359,8 +274,8 @@ def graph2_accuracy_vs_time():
     
     cbow_data = combined_df[combined_df['model'] == 'CBOW'].copy()
     large_dataset_cb = cbow_data[
-        (cbow_data['vocab_size'] >= 496810) &
-        (cbow_data['total_words'] >= 763998553)
+        (cbow_data['vocab_size'] == 520233) &
+        (cbow_data['total_words'] == 783000000)
     ].copy()
     
     for method in ['HS', 'NS']:
@@ -389,7 +304,7 @@ def graph2_accuracy_vs_time():
     
     ax3.set_xlabel('Training Time (minutes)', fontsize=12, fontweight='bold')
     ax3.set_ylabel('Total Accuracy', fontsize=12, fontweight='bold')
-    ax3.set_title('CBOW: Large Dataset (≥496K vocab, ≥783M words)', 
+    ax3.set_title('CBOW: Large Dataset (520K vocab, 783M words)', 
                  fontsize=13, fontweight='bold', pad=15)
     ax3.legend(loc='lower right', fontsize=10, frameon=True, fancybox=True, shadow=True)
     ax3.grid(True, alpha=0.3, linestyle='--', zorder=1)

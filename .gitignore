@@ -39,6 +39,7 @@ ENV/
 
 # Project specific
 md/
+Report/
 *.log
 *.pkl
 *.pickle
